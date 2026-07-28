@@ -1,0 +1,35 @@
+# Секреты и OAuth
+.env
+*.env.local
+auth.json
+auth/
+oauth/
+credentials/*
+!credentials/.gitkeep
+secrets/
+
+# Состояние Hermes
+runtime/*
+!runtime/.gitkeep
+backups/*
+!backups/.gitkeep
+state.db
+state.db-*
+memory_store.db
+memory_store.db-*
+
+# Личные заметки, которые не должны случайно попасть в git
+knowledge/private/*
+!knowledge/private/.gitkeep
+
+# Локальные артефакты
+*.log
+*.tmp
+*.bak
+*.zip
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.pytest_cache/
+__pycache__/

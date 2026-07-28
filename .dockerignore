@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+credentials
+runtime
+backups
+knowledge/private
+*.db
+*.db-*
+*.log
+*.zip
+.idea
+.vscode
+__pycache__

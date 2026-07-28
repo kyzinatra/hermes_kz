@@ -1,0 +1,35 @@
+name: hermes-personal
+
+services:
+  hermes:
+    build:
+      context: .
+      args:
+        HERMES_IMAGE: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.7.20}
+        INSTALL_LOCAL_STT: ${INSTALL_LOCAL_STT:-true}
+    image: hermes-personal:latest
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    env_file:
+      - .env
+    environment:
+      HERMES_UID: ${HERMES_UID:-1000}
+      HERMES_GID: ${HERMES_GID:-1000}
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ./runtime:/opt/data
+      - ./config.yaml:/opt/data/config.yaml
+      - ./.env:/opt/data/.env
+      - ./SOUL.md:/opt/data/SOUL.md:ro
+      - ./memories:/opt/data/memories
+      - ./knowledge:/opt/data/knowledge
+      - ./plugins/web/tavily-ddgs:/opt/data/plugins/web/tavily-ddgs:ro
+      - ./credentials:/credentials:ro
+      - ./backups:/backup
+    shm_size: "1gb"
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

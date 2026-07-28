@@ -1,0 +1,133 @@
+model:
+  provider: openai-codex
+  default: gpt-5.6-sol
+
+agent:
+  max_turns: 160
+  gateway_timeout: 3600
+  gateway_timeout_warning: 1200
+  api_max_retries: 3
+  reasoning_effort: medium
+  verbose: false
+  verify_on_stop: false
+compression:
+  enabled: true
+  progress_notices: false
+  threshold: 0.5
+  target_ratio: 0.2
+  protect_last_n: 20
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
+security:
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: true
+terminal:
+  backend: local
+  cwd: /opt/data/workspace
+  timeout: 180
+  home_mode: profile
+web:
+  search_backend: tavily-ddgs
+  extract_backend: tavily-ddgs
+  extract_char_limit: 15000
+browser:
+  engine: chrome
+  inactivity_timeout: 120
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  memory_char_limit: 2200
+  user_char_limit: 1375
+  nudge_interval: 10
+  flush_min_turns: 6
+  write_approval: false
+  provider: holographic
+plugins:
+  hermes-memory-store:
+    db_path: /opt/data/memory_store.db
+    auto_extract: false
+    default_trust: 0.6
+  enabled:
+    - web/tavily-ddgs
+session_reset:
+  mode: idle
+  idle_minutes: 10080
+  at_hour: 4
+max_concurrent_sessions: 4
+group_sessions_per_user: true
+skills:
+  creation_nudge_interval: 20
+  guard_agent_created: true
+  write_approval: true
+delegation:
+  max_iterations: 40
+  max_concurrent_children: 3
+  max_spawn_depth: 1
+  orchestrator_enabled: true
+  subagent_auto_approve: false
+platform_toolsets:
+  cli:
+    - hermes-cli
+  telegram:
+    - hermes-telegram
+platforms:
+  telegram:
+    reply_to_mode: first
+    guest_mode: false
+    extra:
+      disable_link_previews: true
+      rich_messages: false
+      rich_drafts: false
+      command_menu:
+        max_commands: 60
+        priority_mode: prepend
+      reactions: true
+streaming:
+  enabled: true
+  transport: edit
+stt:
+  enabled: true
+  provider: local
+  language: ru
+  local:
+    model: base
+    language: ru
+    initial_prompt: Русская речь, имена, технические термины и англицизмы.
+tts:
+  provider: edge
+  speed: 1.0
+  edge:
+    voice: ru-RU-DmitryNeural
+    speed: 1.0
+image_gen:
+  provider: openai-codex
+  model: gpt-image-2-medium
+  openai-codex:
+    model: gpt-image-2-medium
+display:
+  compact: true
+  tool_progress: new
+  cleanup_progress: true
+  interim_assistant_messages: true
+  long_running_notifications: true
+  busy_ack_detail: false
+  busy_input_mode: steer
+  background_process_notifications: result
+  memory_notifications: verbose
+  show_reasoning: false
+  platforms:
+    telegram:
+      notifications: important
+_config_version: 33
