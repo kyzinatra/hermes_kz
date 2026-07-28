@@ -86,6 +86,7 @@ platforms:
   telegram:
     reply_to_mode: first
     guest_mode: false
+    unauthorized_dm_behavior: ignore
     extra:
       disable_link_previews: true
       rich_messages: false

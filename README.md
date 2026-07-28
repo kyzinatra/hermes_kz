@@ -62,10 +62,12 @@ Google Sheets API, Google Docs API и People API. Создайте OAuth Client 
 `credentials/google-client-secret.json`.
 
 ```bash
-chmod 600 credentials/google-client-secret.json
 bash scripts/google-workspace.sh install-client
 bash scripts/google-workspace.sh auth-url
 ```
+
+При запуске от `root` скрипт сам назначит каталогу и JSON владельца из
+`HERMES_UID:HERMES_GID`, сохранив закрытые права `700/600`.
 
 Откройте выданный URL. Переход на `http://localhost:1` завершится ошибкой —
 это ожидаемо. Скопируйте полный URL из адресной строки:
