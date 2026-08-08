@@ -268,7 +268,7 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
         result = mailbox.read_message("42", expected_uidvalidity="777")
 
         self.assertTrue(result["success"])
-        self.assertEqual(factory.calls[0][0:2], ("imap.yandex.com", 993))
+        self.assertEqual(factory.calls[0][0:2], ("imap.ya.ru", 993))
         self.assertEqual(factory.calls[0][2]["timeout"], 30.0)
         tls_context = factory.calls[0][2]["ssl_context"]
         self.assertIsInstance(tls_context, ssl.SSLContext)

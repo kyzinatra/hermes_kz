@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 
 INBOX = "INBOX"
-DEFAULT_IMAP_HOST = "imap.yandex.com"
+DEFAULT_IMAP_HOST = "imap.ya.ru"
 DEFAULT_IMAP_PORT = 993
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_LIST_LIMIT = 20

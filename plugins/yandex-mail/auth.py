@@ -40,7 +40,8 @@ REDIRECT_URI = "https://oauth.yandex.ru/verification_code"
 REQUIRED_SCOPE = "mail:imap_ro"
 FORBIDDEN_SCOPES = frozenset({"mail:imap_full", "mail:smtp"})
 
-IMAP_HOST = "imap.yandex.com"
+# Yandex documents imap.ya.ru for connections from outside Russia.
+IMAP_HOST = "imap.ya.ru"
 IMAP_PORT = 993
 
 _HTTP_TIMEOUT_SECONDS = 30.0
