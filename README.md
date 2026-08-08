@@ -2,14 +2,15 @@
 
 Русскоязычный личный ассистент на Hermes Agent: `gpt-5.6-sol` через
 OpenAI Codex OAuth, Telegram, Tavily с DDGS fallback, Google Workspace,
-локальная память, Obsidian/LLM Wiki и голосовые сообщения.
+Яндекс Почта только для чтения, локальная память, Obsidian/LLM Wiki и
+голосовые сообщения.
 
 ## Требования
 
 Нужен Linux-сервер с Git, Docker Engine и Docker Compose v2. Рекомендуется
 2 vCPU, 4 ГБ RAM и не менее 10 ГБ свободного диска. Docker должен запускаться
 обычным пользователем без `sudo`; Hermes не публикует входящие порты и требует
-только исходящий HTTPS.
+только исходящие HTTPS и IMAPS (`tcp/993`).
 
 ## Установка
 
@@ -77,6 +78,49 @@ bash scripts/google-workspace.sh auth-code \
   'ПОЛНЫЙ_URL_ИЗ_АДРЕСНОЙ_СТРОКИ'
 bash scripts/google-workspace.sh check-live
 ```
+
+## Яндекс Почта — только чтение
+
+Интеграция использует OAuth, а не пароль от аккаунта. На стороне Яндекса токен
+ограничен scope `mail:imap_ro`; Hermes дополнительно открывает только `INBOX` в
+режиме `EXAMINE` и читает через `BODY.PEEK`, поэтому письма не помечаются как
+прочитанные. Инструментов отправки, удаления, перемещения и изменения флагов в
+плагине нет.
+
+1. В настройках Яндекс Почты в разделе «Почтовые программы» включите IMAP и
+   «Пароли приложений и OAuth-токены».
+2. [Создайте OAuth-приложение](https://oauth.yandex.ru/client/new/id/) типа
+   «Для авторизации пользователей». Для платформы «Веб-сервисы» укажите
+   Redirect URI `https://oauth.yandex.ru/verification_code` и выберите только
+   право «Доступ на чтение писем в почтовом ящике» (`mail:imap_ro`). Не
+   добавляйте `mail:imap_full` или `mail:smtp`.
+3. Создайте закрытый файл с Client ID, Client secret и полным адресом ящика:
+
+```bash
+cp credentials/yandex-mail-oauth.example.json \
+  credentials/yandex-mail-oauth.json
+chmod 600 credentials/yandex-mail-oauth.json
+# Заполните credentials/yandex-mail-oauth.json
+```
+
+Получите код, обменяйте его на OAuth- и refresh-токены и проверьте соединение:
+
+```bash
+bash scripts/yandex-mail.sh auth-url
+# Откройте напечатанный URL и скопируйте показанный Яндексом код.
+bash scripts/yandex-mail.sh auth-code
+# Вставьте код в закрытый интерактивный запрос.
+bash scripts/yandex-mail.sh check-live
+```
+
+Токены сохраняются с правами `600` в `runtime/yandex-mail/` и автоматически
+обновляются. После подключения перезапустите Hermes и попросите, например:
+«Покажи пять последних писем из Входящих».
+
+У Яндекса нет отдельного OAuth scope только для папки «Входящие»:
+`mail:imap_ro` разрешает чтение всего ящика. Ограничение до `INBOX` обеспечивает
+сам плагин Hermes. Содержимое вложений не передаётся модели; видны только их
+имена и MIME-типы. Письма крупнее безопасного лимита плагин читать отказывается.
 
 ## Запуск
 

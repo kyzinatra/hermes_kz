@@ -24,6 +24,7 @@ services:
       - ./memories:/opt/data/memories
       - ./knowledge:/opt/data/knowledge
       - ./plugins/web/tavily-ddgs:/opt/data/plugins/web/tavily-ddgs:ro
+      - ./plugins/yandex-mail:/opt/data/plugins/yandex-mail:ro
       - ./credentials:/credentials:ro
       - ./backups:/backup
     shm_size: "1gb"

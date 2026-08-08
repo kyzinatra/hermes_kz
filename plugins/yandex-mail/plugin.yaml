@@ -1,0 +1,8 @@
+name: yandex-mail
+version: 1.0.0
+description: "Read-only access to the Yandex Mail INBOX over IMAP OAuth2."
+author: Hermes Personal
+kind: standalone
+provides_tools:
+  - yandex_mail_list_inbox
+  - yandex_mail_read_message

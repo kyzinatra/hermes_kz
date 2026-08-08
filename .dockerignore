@@ -9,6 +9,7 @@ knowledge/private
 *.db-*
 *.log
 *.zip
+*.tar.gz
 .idea
 .vscode
 __pycache__
