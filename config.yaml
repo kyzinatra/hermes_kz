@@ -84,7 +84,7 @@ stt:
 memory:
   memory_enabled: true
   user_profile_enabled: true
-  write_approval: true
+  write_approval: false
   memory_char_limit: 2200
   user_char_limit: 1375
   provider: holographic
@@ -97,12 +97,12 @@ delegation:
   orchestrator_enabled: true
   subagent_auto_approve: false
 skills:
-  # Version-controlled policy skills are mounted read-only outside the
-  # Hermes-managed /opt/data/skills tree, so bundled skill sync remains intact.
+  # Version-controlled policy skills are exposed alongside the writable
+  # Hermes-managed /opt/data/skills tree.
   external_dirs:
     - custom-skills
   guard_agent_created: true
-  write_approval: true
+  write_approval: false
   creation_nudge_interval: 20
 approvals:
   destructive_slash_confirm: true
@@ -140,20 +140,24 @@ platform_toolsets:
   cli:
     - hermes-cli
     - korea
-  telegram:
-    # Deliberately no terminal, file, code_execution, delegation, or cronjob:
-    # Telegram consumes untrusted web content in the credentialed container.
-    # Mail is CLI-only so email prompt injection has no network-egress tool.
-    - web
-    - browser
+    - yandex_mail
+  cron:
+    - hermes-cron
     - korea
-    # Exact v2026.8.27 sentinel: do not auto-inject configured MCP servers.
+    - yandex_mail
+    - no_mcp
+  telegram:
+    # Personal bot: full first-party toolset plus reviewed local plugins.
+    - hermes-telegram
+    - korea
+    - yandex_mail
+    # MCP remains opt-in; local files, terminal, skills, cron and delegation are
+    # provided by hermes-telegram and do not depend on MCP registration.
     - no_mcp
 # Exact v2026.8.27 treats a plugin toolset as enabled on a platform until it
 # has been seen there once. Record both custom plugins for every built-in
 # platform so omission is always an explicit deny. Korea is then allowed only
-# above for CLI/Telegram; Yandex Mail is available only through its fail-closed
-# dedicated launcher.
+# above for CLI/Telegram/cron.
 known_plugin_toolsets:
   api_server:
     - korea

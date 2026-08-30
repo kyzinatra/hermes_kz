@@ -72,25 +72,46 @@ class ConfigPolicyTests(unittest.TestCase):
         for platform in PINNED_HERMES_PLATFORMS:
             self.assertEqual(set(known[platform]), CUSTOM_PLUGIN_TOOLSETS)
 
-    def test_yandex_mail_is_not_enabled_on_any_platform(self) -> None:
+    def test_personal_surfaces_have_full_first_party_tools_and_plugins(self) -> None:
         configured = self.platform_toolsets
-        self.assertNotIn(
-            "yandex_mail",
-            {
-                str(toolset)
-                for toolsets in configured.values()
-                for toolset in toolsets
-            },
+        self.assertEqual(
+            configured["telegram"],
+            ["hermes-telegram", "korea", "yandex_mail", "no_mcp"],
+        )
+        self.assertEqual(
+            configured["cli"],
+            ["hermes-cli", "korea", "yandex_mail"],
+        )
+        self.assertEqual(
+            configured["cron"],
+            ["hermes-cron", "korea", "yandex_mail", "no_mcp"],
         )
 
-    def test_korea_is_enabled_only_for_cli_and_telegram(self) -> None:
-        configured = self.platform_toolsets
-        enabled = {
-            platform
-            for platform, toolsets in configured.items()
-            if "korea" in toolsets
-        }
-        self.assertEqual(enabled, {"cli", "telegram"})
+    def test_agent_writes_are_enabled_but_secrets_stay_read_only(self) -> None:
+        config_text = (ROOT / "config.yaml").read_text("utf-8")
+        compose_text = (ROOT / "docker-compose.yml").read_text("utf-8")
+        self.assertIn(
+            "memory:\n  memory_enabled: true\n  user_profile_enabled: true\n"
+            "  write_approval: false",
+            config_text,
+        )
+        self.assertIn(
+            "  guard_agent_created: true\n  write_approval: false",
+            config_text,
+        )
+        for mount in (
+            "./config.yaml:/opt/data/config.yaml",
+            "./SOUL.md:/opt/data/SOUL.md",
+            "./skills:/opt/data/custom-skills",
+            "./plugins:/opt/data/plugins",
+        ):
+            self.assertIn(f"- {mount}", compose_text)
+            self.assertNotIn(f"- {mount}:ro", compose_text)
+        self.assertIn("source: ./.env", compose_text)
+        self.assertIn("target: /opt/data/.env", compose_text)
+        self.assertIn("read_only: true", compose_text)
+        self.assertGreaterEqual(compose_text.count("create_host_path: false"), 2)
+        self.assertIn("- ./credentials:/credentials:ro", compose_text)
 
     def test_browser_private_network_and_eval_policy_is_explicit(self) -> None:
         config_text = (ROOT / "config.yaml").read_text("utf-8")

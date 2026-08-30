@@ -15,16 +15,24 @@ services:
       HERMES_GATEWAY_NO_SUPERVISE: "1"
       TZ: ${TZ:-Asia/Vladivostok}
     volumes:
-      - ./runtime:/opt/data
-      - ./config.yaml:/opt/data/config.yaml:ro
-      # Secrets stay in the mounted file instead of `docker inspect` output.
-      - ./.env:/opt/data/.env:ro
-      - ./SOUL.md:/opt/data/SOUL.md:ro
-      - ./skills:/opt/data/custom-skills:ro
+      - type: bind
+        source: ./runtime
+        target: /opt/data
+        bind:
+          create_host_path: false
+      - ./config.yaml:/opt/data/config.yaml
+      # Fail instead of silently creating a .env directory when the file is absent.
+      - type: bind
+        source: ./.env
+        target: /opt/data/.env
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./SOUL.md:/opt/data/SOUL.md
+      - ./skills:/opt/data/custom-skills
       - ./memories:/opt/data/memories
       - ./knowledge:/opt/data/knowledge
-      # Read-only prevents runtime code from planting importable plugins.
-      - ./plugins:/opt/data/plugins:ro
+      - ./plugins:/opt/data/plugins
       - ./credentials:/credentials:ro
       - ./backups:/backup
     shm_size: "1gb"

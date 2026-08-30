@@ -72,24 +72,17 @@ transitive graph отдельно для Linux amd64/arm64 закреплён SH
 `requirements/*.lock`. Docker build использует `uv --require-hashes`;
 обновляйте `.in` и оба архитектурных lock-файла одним осознанным изменением.
 
-## Граница доверия Telegram
+## Доступ личного Telegram-бота
 
-Telegram использует минимальный явный allowlist: web, browser и Korea. Sentinel
-`no_mcp` запрещает автоматическую подстановку MCP-серверов. Два локальных
-Korea/web skills загружаются явной slash-командой или привязкой Telegram Topic;
-опасный `skill_manage` удалённому чату не выдаётся. Также недоступны terminal,
-произвольные файловые операции,
-Python/code execution, memory/skill management, session search, delegation,
-cron и произвольные MCP. Полный `hermes-cli` остаётся только локальным
-административным интерфейсом; через него выполняются настройка, диагностика и
-  Google Workspace. Read-only Яндекс Почта намеренно не доступна ни в Telegram,
-  ни в полном admin CLI: недоверенное письмо не должно делить контекст с
-  сетевыми, файловыми или terminal tools.
+Telegram использует штатный полный toolset `hermes-telegram`: terminal/process,
+чтение и запись файлов, patch/search, управление skills и memory, code execution,
+delegation, session search и cron. Дополнительно включены Korea и Яндекс Почта.
+Google Workspace вызывается через его skill и terminal-команды. Sentinel `no_mcp`
+оставляет произвольные MCP opt-in и не ограничивает перечисленные локальные
+инструменты.
 
-У локального browser upstream обычно отключает SSRF-фильтр, предполагая, что у
-того же пользователя уже есть terminal. Для Telegram это предположение неверно.
-Production launcher запускает обязательный loopback egress-proxy и передаёт его
-в фактический дочерний процесс Chromium без `DIRECT` fallback. Proxy сам один раз
+Для browser production launcher запускает обязательный loopback egress-proxy и
+передаёт его в фактический дочерний процесс Chromium без `DIRECT` fallback. Proxy сам один раз
 разрешает DNS-имя, проверяет весь набор адресов и соединяется только с уже
 проверенным публичным numeric IP. Поэтому loopback, link-local, RFC1918/LAN,
 private redirect, subresource и DNS rebinding блокируются до сетевого запроса;
@@ -100,10 +93,11 @@ gateway не стартует; если proxy остановится позже,
 перехода на прямое соединение. Локальный административный CLI запускается
 отдельным процессом и сохраняет свой обычный local-terminal режим.
 
-Запись memory и skills требует явного подтверждения, destructive slash-команды
-тоже подтверждаются, а security scanner работает fail-closed. `.env`,
-`config.yaml`, весь каталог плагинов, `SOUL.md` и version-controlled skills
-смонтированы read-only; OAuth/session state хранится отдельно в `runtime/`.
+Hermes может без отдельного approval записывать memory и создавать управляемые
+skills; созданные агентом skills всё равно проходят security scan. Destructive
+slash-команды требуют подтверждения. `config.yaml`, `SOUL.md`, plugins и
+version-controlled skills смонтированы для записи. `.env` и OAuth client secrets
+остаются read-only; OAuth/session state хранится отдельно в `runtime/`.
 Tavily, Kakao и Yandex credentials отправляются только на закреплённые
 официальные endpoints.
 
@@ -175,8 +169,8 @@ bash scripts/yandex-mail.sh chat
 Перед запуском сессия fail-closed перепроверяет регистрацию и точный состав
 двух read-only mail tools; при ошибке плагина TUI не откроется. Процесс проходит
 штатный container bootstrap и работает от пользователя `hermes`, а не `root`.
-В сессии нет web, browser, terminal, file, memory, delegation или MCP. Уже
-внутри неё попросите, например: «Покажи пять последних писем из Входящих».
+Тот же toolset доступен напрямую в личном Telegram, CLI и cron. Внутри сессии
+попросите, например: «Покажи пять последних писем из Входящих».
 
 У Яндекса нет отдельного OAuth scope только для папки «Входящие»:
 `mail:imap_ro` разрешает чтение всего ящика. Ограничение до `INBOX` обеспечивает
@@ -191,19 +185,21 @@ version-controlled skills:
 
 - `cost-aware-web-routing` — выбор DDGS, Tavily и локального browser;
 - `korea-local-operations` — места, маршруты, покупки и приватная геолокация.
+- `hermes-self-management` — собственные файлы, config, plugins, skills и cron.
 
-Каталог `./skills` смонтирован read-only как `/opt/data/custom-skills` и подключён
+Каталог `./skills` смонтирован для записи как `/opt/data/custom-skills` и подключён
 через `skills.external_dirs`. Он не перекрывает управляемый Hermes каталог
 `/opt/data/skills` со встроенными skills. После изменения skill перезапустите
 gateway, выполните `/reset` и проверьте discovery командой
 `docker compose exec hermes hermes skills list`.
 
-В обычном личном Telegram DM skills вызываются явно, без выдачи write-capable
-toolset `skills`:
+В обычном личном Telegram DM доступны `skills_list`, `skill_view` и
+`skill_manage`; skills также можно вызывать явно:
 
 ```text
 /cost_aware_web_routing найди актуальную документацию по ...
 /korea_local_operations где рядом поесть рамён и как пройти
+/hermes_self_management создай skill для еженедельного обзора проектов
 ```
 
 После первого вызова skill остаётся в истории текущей сессии. Если в Telegram
@@ -343,11 +339,16 @@ docker compose restart hermes
 ```bash
 docker compose exec hermes hermes backup \
   -o "/backup/hermes-$(date +%F-%H%M%S).zip"
+docker compose exec hermes hermes cron list
 ```
 
 Архив содержит секреты и должен храниться зашифрованно.
 
 ```bash
+# Сначала сохраните runtime, включая cron, OAuth и сессии.
+docker compose exec hermes hermes backup \
+  -o "/backup/hermes-predeploy-$(date +%F-%H%M%S).zip"
+
 git pull --ff-only
 docker compose config --quiet
 docker compose build --pull
