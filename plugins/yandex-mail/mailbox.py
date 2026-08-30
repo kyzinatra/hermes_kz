@@ -1,9 +1,10 @@
-"""Strictly read-only Yandex Mail IMAP client.
+"""Narrow Yandex Mail IMAP client.
 
-The client deliberately exposes only INBOX list/read operations.  It opens the
-mailbox with IMAP EXAMINE (``select(..., readonly=True)``), addresses messages
-by UID, and fetches data with ``BODY.PEEK`` so successful reads do not add the
-``\\Seen`` flag.  OAuth token acquisition is injected by the caller.
+The client exposes only INBOX list/read and an explicit mark-read operation.
+Reads use IMAP EXAMINE and ``BODY.PEEK``. Mark-read opens INBOX read-write only
+long enough to add ``\\Seen`` to one UID after validating UIDVALIDITY. It cannot
+send, delete, move, copy, expunge, append, or change any other flag. OAuth token
+acquisition is injected by the caller.
 """
 
 from __future__ import annotations
@@ -429,7 +430,7 @@ def _attachment_metadata(message: Message) -> Tuple[List[Dict[str, Any]], bool]:
 
 
 class YandexReadonlyMailbox:
-    """Small, dependency-free and dependency-injectable read-only IMAP client."""
+    """Small IMAP client with read operations plus one constrained flag write."""
 
     def __init__(
         self,
@@ -485,7 +486,11 @@ class YandexReadonlyMailbox:
         return host
 
     @contextmanager
-    def _selected_inbox(self) -> Iterator[Tuple[Any, Optional[str]]]:
+    def _selected_inbox(
+        self,
+        *,
+        readonly: bool = True,
+    ) -> Iterator[Tuple[Any, Optional[str]]]:
         try:
             credentials = self._token_provider()
             if not isinstance(credentials, tuple) or len(credentials) != 2:
@@ -523,11 +528,11 @@ class YandexReadonlyMailbox:
             address = ""
             auth_payload = b""
 
-            status, _data = client.select(INBOX, readonly=True)
+            status, _data = client.select(INBOX, readonly=readonly)
             if not _status_ok(status):
                 raise _MailboxFailure(
                     "INBOX_UNAVAILABLE",
-                    "The Yandex Mail INBOX could not be opened read-only.",
+                    "The Yandex Mail INBOX could not be opened.",
                 )
             yield client, self._uidvalidity(client)
         finally:
@@ -572,7 +577,7 @@ class YandexReadonlyMailbox:
             )
         return _failure(
             "MAILBOX_ERROR",
-            "The read-only Yandex Mail operation failed.",
+            "The Yandex Mail operation failed.",
         )
 
     @staticmethod
@@ -766,6 +771,65 @@ class YandexReadonlyMailbox:
                     body_truncated=original_body_chars > len(returned_body),
                     attachments=attachments,
                     attachments_truncated=attachments_truncated,
+                )
+        except Exception as exc:  # noqa: BLE001 - public error boundary
+            return self._public_exception(exc)
+
+    def mark_read(
+        self,
+        uid: Any,
+        *,
+        expected_uidvalidity: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Add only the Seen flag to one verified INBOX UID."""
+        try:
+            safe_uid = _validate_uid(uid)
+            safe_uidvalidity = _validate_uid(
+                expected_uidvalidity,
+                field="uidvalidity",
+            )
+
+            with self._selected_inbox(readonly=False) as (client, uidvalidity):
+                if uidvalidity is None:
+                    raise _MailboxFailure(
+                        "UIDVALIDITY_UNAVAILABLE",
+                        "The server did not provide UIDVALIDITY, so the UID "
+                        "cannot be verified safely.",
+                    )
+                if safe_uidvalidity != uidvalidity:
+                    raise _MailboxFailure(
+                        "STALE_UID",
+                        "The INBOX UIDVALIDITY changed; list the inbox again "
+                        "before marking a message read.",
+                        {
+                            "expected_uidvalidity": safe_uidvalidity,
+                            "current_uidvalidity": uidvalidity,
+                        },
+                    )
+
+                envelope = self._fetch_header(client, safe_uid)
+                flags = envelope.get("flags", [])
+                already_seen = "\\Seen" in flags
+                if not already_seen:
+                    status, _data = client.uid(
+                        "STORE",
+                        safe_uid,
+                        "+FLAGS.SILENT",
+                        "(\\Seen)",
+                    )
+                    if not _status_ok(status):
+                        raise _MailboxFailure(
+                            "MARK_READ_FAILED",
+                            "The message could not be marked as read.",
+                            {"uid": safe_uid},
+                        )
+
+                return _success(
+                    mailbox=INBOX,
+                    uid=safe_uid,
+                    uidvalidity=uidvalidity,
+                    seen=True,
+                    already_seen=already_seen,
                 )
         except Exception as exc:  # noqa: BLE001 - public error boundary
             return self._public_exception(exc)

@@ -1,4 +1,4 @@
-"""Command-line setup for the read-only Yandex Mail OAuth integration."""
+"""Command-line setup for the narrow Yandex Mail OAuth integration."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _add_paths(parser: argparse.ArgumentParser) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Configure read-only Yandex Mail OAuth access."
+        description="Configure narrow Yandex Mail OAuth access."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

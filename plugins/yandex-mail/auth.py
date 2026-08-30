@@ -1,4 +1,4 @@
-"""Minimal, read-only Yandex Mail OAuth support.
+"""Minimal OAuth support for narrow Yandex Mail IMAP operations.
 
 The module deliberately uses only the Python standard library.  Its public
 entry point for the mail plugin is :func:`get_access_token`, which returns a
@@ -39,8 +39,8 @@ DEFAULT_TOKEN_PATH = Path("/opt/data/yandex-mail/oauth.json")
 AUTHORIZE_URL = "https://oauth.yandex.ru/authorize"
 TOKEN_URL = "https://oauth.yandex.ru/token"
 REDIRECT_URI = "https://oauth.yandex.ru/verification_code"
-REQUIRED_SCOPE = "mail:imap_ro"
-FORBIDDEN_SCOPES = frozenset({"mail:imap_full", "mail:smtp"})
+REQUIRED_SCOPE = "mail:imap_full"
+FORBIDDEN_SCOPES = frozenset({"mail:imap_ro", "mail:smtp"})
 
 # Yandex documents imap.ya.ru for connections from outside Russia.
 IMAP_HOST = "imap.ya.ru"

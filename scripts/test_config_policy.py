@@ -136,6 +136,19 @@ class ConfigPolicyTests(unittest.TestCase):
         )
         self.assertIn("single guarded gateway", init_text)
 
+    def test_always_on_memory_ownership_is_repaired_at_boot(self) -> None:
+        dockerfile_text = (ROOT / "Dockerfile").read_text("utf-8")
+        init_text = (
+            ROOT / "scripts" / "hermes_writable_state_init.sh"
+        ).read_text("utf-8")
+        self.assertIn(
+            "COPY scripts/hermes_writable_state_init.sh "
+            "/etc/cont-init.d/014-hermes-writable-state",
+            dockerfile_text,
+        )
+        self.assertIn("chown -R", init_text)
+        self.assertIn("/opt/data/memories", init_text)
+
 
 if __name__ == "__main__":
     unittest.main()

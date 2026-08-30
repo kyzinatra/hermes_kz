@@ -94,7 +94,7 @@ class YandexMailLauncherTests(unittest.TestCase):
                 ),
             )
         self.assertEqual(result, launcher.EX_CONFIG)
-        self.assertIn("exact read-only", stderr.getvalue())
+        self.assertIn("exact narrow", stderr.getvalue())
 
     def test_verify_required_toolset_rejects_missing_plugin(self) -> None:
         plugins = self._trusted(

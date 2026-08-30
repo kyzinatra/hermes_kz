@@ -86,7 +86,7 @@ class OAuthTestCase(unittest.TestCase):
         self.token_path.write_text(json.dumps(token), encoding="utf-8")
         return token
 
-    def test_authorization_url_has_exact_readonly_scope_and_manual_redirect(self) -> None:
+    def test_authorization_url_has_exact_imap_full_scope_and_manual_redirect(self) -> None:
         url = auth.build_authorization_url(self.credentials_path)
         parsed = urlsplit(url)
         query = parse_qs(parsed.query)
@@ -95,9 +95,9 @@ class OAuthTestCase(unittest.TestCase):
         self.assertEqual(query["response_type"], ["code"])
         self.assertEqual(query["client_id"], [CLIENT_ID])
         self.assertEqual(query["redirect_uri"], [auth.REDIRECT_URI])
-        self.assertEqual(query["scope"], ["mail:imap_ro"])
+        self.assertEqual(query["scope"], ["mail:imap_full"])
         self.assertEqual(query["force_confirm"], ["yes"])
-        self.assertNotIn("mail:imap_full", url)
+        self.assertNotIn("mail:imap_ro", url)
         self.assertNotIn("mail:smtp", url)
         self.assertNotIn(CLIENT_SECRET, url)
 
@@ -163,15 +163,15 @@ class OAuthTestCase(unittest.TestCase):
         temporary_files = list(self.token_path.parent.glob(".oauth.json.*.tmp"))
         self.assertEqual(temporary_files, [])
 
-    def test_exchange_rejects_full_or_smtp_scope_without_replacing_token(self) -> None:
+    def test_exchange_rejects_extra_or_insufficient_scope_without_replacing_token(self) -> None:
         self._write_token(access_token="old-token")
         original = self.token_path.read_bytes()
 
         for unsafe_scope in (
-            "mail:imap_ro mail:imap_full",
-            "mail:imap_ro mail:smtp",
-            "mail:imap_ro login:email",
-            "mail:imap_ro disk:all",
+            "mail:imap_ro",
+            "mail:imap_full mail:smtp",
+            "mail:imap_full login:email",
+            "mail:imap_full disk:all",
         ):
             with self.subTest(scope=unsafe_scope):
                 with self.assertRaises(auth.OAuthRequestError):
@@ -214,7 +214,7 @@ class OAuthTestCase(unittest.TestCase):
                     "access_token": "rotated-access",
                     "refresh_token": "rotated-refresh",
                     "expires_in": 7200,
-                    "scope": "mail:imap_ro",
+                    "scope": "mail:imap_full",
                 }
             )
 
@@ -302,10 +302,10 @@ class OAuthTestCase(unittest.TestCase):
 
     def test_saved_token_scope_and_mailbox_binding_are_checked(self) -> None:
         for scope in (
-            "mail:imap_full",
+            "mail:imap_ro",
             "mail:smtp",
             "login:email",
-            "mail:imap_ro login:email",
+            "mail:imap_full login:email",
         ):
             with self.subTest(scope=scope):
                 self._write_token(scope=scope)
@@ -459,7 +459,7 @@ class OAuthTestCase(unittest.TestCase):
             stderr=errors,
         )
         self.assertEqual(return_code, 0)
-        self.assertIn("scope=mail%3Aimap_ro", output.getvalue())
+        self.assertIn("scope=mail%3Aimap_full", output.getvalue())
         self.assertNotIn(CLIENT_SECRET, output.getvalue())
 
         self._write_token()

@@ -93,7 +93,7 @@ case "${command_name}" in
     fi
     prepare_credentials
     # Email is untrusted input.  The fail-closed launcher verifies the exact
-    # two-tool mail plugin before TUI dispatch.  Keep the image entrypoint so
+    # three-tool mail plugin before TUI dispatch.  Keep the image entrypoint so
     # upstream bootstrap/init still drops privileges to the hermes user.
     docker compose run --rm --no-deps hermes \
       python /opt/hermes/bin/hermes_yandex_mail.py

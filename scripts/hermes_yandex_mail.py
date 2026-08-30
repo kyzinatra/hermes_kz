@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed launcher for the dedicated read-only Yandex Mail TUI.
+"""Fail-closed launcher for the dedicated narrow Yandex Mail TUI.
 
 Hermes intentionally treats plugin discovery failures as non-fatal and its TUI
 falls back to the configured CLI toolsets when every explicit toolset is
@@ -26,13 +26,14 @@ EXPECTED_YANDEX_MAIL_TOOLS = frozenset(
     {
         "yandex_mail_list_inbox",
         "yandex_mail_read_message",
+        "yandex_mail_mark_read",
     }
 )
 _FATAL_RUNTIME_MESSAGE = (
     "FATAL: trusted Hermes mail runtime is unavailable; mail TUI will not start."
 )
 _FATAL_TOOLSET_MESSAGE = (
-    "FATAL: exact read-only Yandex Mail toolset is unavailable; "
+    "FATAL: exact narrow Yandex Mail toolset is unavailable; "
     "mail TUI will not start."
 )
 
@@ -55,7 +56,7 @@ def verify_required_toolset(
     importer: Callable[[str], Any] = importlib.import_module,
     hermes_root: Path = DEFAULT_HERMES_ROOT,
 ) -> None:
-    """Force discovery and require exactly the two reviewed mail tools."""
+    """Force discovery and require exactly the three reviewed mail tools."""
     plugins_module = importer("hermes_cli.plugins")
     toolsets_module = importer("toolsets")
     _assert_module_origin(plugins_module, hermes_root, "Hermes plugin loader")

@@ -1,4 +1,4 @@
-"""Unit tests for the dependency-free read-only Yandex Mail client."""
+"""Unit tests for the dependency-free narrow Yandex Mail client."""
 
 from __future__ import annotations
 
@@ -58,11 +58,13 @@ class FakeIMAP:
         uidvalidity: bytes | None = b"777",
         auth_error: Exception | None = None,
         search_status: str = "OK",
+        store_status: str = "OK",
     ) -> None:
         self.search_uids = search_uids
         self.uidvalidity = uidvalidity
         self.auth_error = auth_error
         self.search_status = search_status
+        self.store_status = store_status
         self.headers: dict[str, tuple[bytes, int | None, str]] = {}
         self.messages: dict[str, bytes] = {}
         self.calls: list[tuple] = []
@@ -102,6 +104,21 @@ class FakeIMAP:
         self.calls.append(("UID", command, *args))
         if command == "SEARCH":
             return self.search_status, [self.search_uids]
+        if command == "STORE":
+            uid, operation, flag_list = args
+            if self.store_status != "OK":
+                return self.store_status, [b"store failed"]
+            if operation != "+FLAGS.SILENT" or flag_list != "(\\Seen)":
+                raise AssertionError("Unexpected STORE arguments")
+            record = self.headers.get(uid)
+            if record is None:
+                return "NO", [b"missing"]
+            header, size, flags = record
+            flag_values = flags.split()
+            if "\\Seen" not in flag_values:
+                flag_values.append("\\Seen")
+            self.headers[uid] = (header, size, " ".join(flag_values))
+            return "OK", [b"stored"]
         if command != "FETCH":
             raise AssertionError(f"Unexpected UID command: {command}")
 
@@ -210,7 +227,7 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
                 ):
                     sys.modules.pop(loaded_name, None)
 
-    def test_hermes_style_plugin_load_registers_exactly_two_json_tools(self):
+    def test_hermes_style_plugin_load_registers_exactly_three_json_tools(self):
         plugin_dir = Path(__file__).parent
         package_name = "_yandex_mail_plugin_contract_test"
         init_path = plugin_dir / "__init__.py"
@@ -255,16 +272,29 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
                     "args": kwargs,
                 }
 
+            def mark_read(self, uid, **kwargs):
+                return {
+                    "success": True,
+                    "security_notice": SECURITY_NOTICE,
+                    "operation": "mark_read",
+                    "uid": uid,
+                    "args": kwargs,
+                }
+
         try:
             spec.loader.exec_module(module)
             module._build_mailbox = StubMailbox
             context = Context()
             module.register(context)
 
-            self.assertEqual(len(context.tools), 2)
+            self.assertEqual(len(context.tools), 3)
             self.assertEqual(
                 {tool["name"] for tool in context.tools},
-                {"yandex_mail_list_inbox", "yandex_mail_read_message"},
+                {
+                    "yandex_mail_list_inbox",
+                    "yandex_mail_read_message",
+                    "yandex_mail_mark_read",
+                },
             )
             self.assertEqual(
                 {tool["toolset"] for tool in context.tools},
@@ -285,6 +315,11 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
                     {"uid": "42", "uidvalidity": "777"}
                 )
             )
+            marked = json.loads(
+                handlers["yandex_mail_mark_read"](
+                    {"uid": "42", "uidvalidity": "777"}
+                )
+            )
             self.assertEqual(listed["operation"], "list")
             self.assertEqual(
                 listed["args"],
@@ -293,8 +328,12 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
             self.assertEqual(read["operation"], "read")
             self.assertEqual(read["uid"], "42")
             self.assertEqual(read["args"]["expected_uidvalidity"], "777")
+            self.assertEqual(marked["operation"], "mark_read")
+            self.assertEqual(marked["uid"], "42")
+            self.assertEqual(marked["args"]["expected_uidvalidity"], "777")
             self.assertEqual(listed["security_notice"], SECURITY_NOTICE)
             self.assertEqual(read["security_notice"], SECURITY_NOTICE)
+            self.assertEqual(marked["security_notice"], SECURITY_NOTICE)
         finally:
             for loaded_name in list(sys.modules):
                 if loaded_name == package_name or loaded_name.startswith(
@@ -332,6 +371,57 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
         for forbidden in ("STORE", "COPY", "MOVE", "EXPUNGE", "APPEND"):
             self.assertNotIn(forbidden, serialized_calls)
         self.assertTrue(fake.logout_called)
+
+    def test_mark_read_adds_only_seen_to_one_verified_uid(self):
+        fake = FakeIMAP()
+        fake.add_message("42", _plain_message(), flags="\\Answered")
+        mailbox, _factory = _client(fake)
+
+        result = mailbox.mark_read("42", expected_uidvalidity="777")
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["seen"])
+        self.assertFalse(result["already_seen"])
+        self.assertIn(("SELECT", "INBOX", False), fake.calls)
+        self.assertIn(
+            ("UID", "STORE", "42", "+FLAGS.SILENT", "(\\Seen)"),
+            fake.calls,
+        )
+        self.assertEqual(
+            set(fake.headers["42"][2].split()),
+            {"\\Answered", "\\Seen"},
+        )
+        serialized_calls = repr(fake.calls).upper()
+        for forbidden in ("COPY", "MOVE", "EXPUNGE", "APPEND", "\\DELETED"):
+            self.assertNotIn(forbidden, serialized_calls)
+
+    def test_mark_read_is_idempotent_when_message_is_already_seen(self):
+        fake = FakeIMAP()
+        fake.add_message("42", _plain_message(), flags="\\Seen")
+        mailbox, _factory = _client(fake)
+
+        result = mailbox.mark_read("42", expected_uidvalidity="777")
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["already_seen"])
+        self.assertFalse(any(call[:2] == ("UID", "STORE") for call in fake.calls))
+
+    def test_mark_read_rejects_stale_or_injected_uid_without_store(self):
+        fake = FakeIMAP()
+        fake.add_message("42", _plain_message())
+        mailbox, _factory = _client(fake)
+
+        stale = mailbox.mark_read("42", expected_uidvalidity="999")
+        injected = mailbox.mark_read(
+            "42 STORE +FLAGS \\Deleted",
+            expected_uidvalidity="777",
+        )
+
+        self.assertFalse(stale["success"])
+        self.assertEqual(stale["error"]["code"], "STALE_UID")
+        self.assertFalse(injected["success"])
+        self.assertEqual(injected["error"]["code"], "INVALID_ARGUMENT")
+        self.assertFalse(any(call[:2] == ("UID", "STORE") for call in fake.calls))
 
     def test_list_uses_stable_uids_newest_first_and_honors_limit(self):
         fake = FakeIMAP(search_uids=b"2 10 3 10")

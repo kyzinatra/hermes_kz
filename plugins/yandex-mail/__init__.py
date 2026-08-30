@@ -1,4 +1,4 @@
-"""Hermes registration for the read-only Yandex Mail tools."""
+"""Hermes registration for narrow Yandex Mail tools."""
 
 from __future__ import annotations
 
@@ -18,7 +18,11 @@ from .mailbox import (
     SECURITY_NOTICE,
     YandexReadonlyMailbox,
 )
-from .schemas import YANDEX_MAIL_LIST_INBOX, YANDEX_MAIL_READ_MESSAGE
+from .schemas import (
+    YANDEX_MAIL_LIST_INBOX,
+    YANDEX_MAIL_MARK_READ,
+    YANDEX_MAIL_READ_MESSAGE,
+)
 
 
 def _json_result(value: Dict[str, Any]) -> str:
@@ -32,7 +36,7 @@ def _configuration_error() -> str:
             "security_notice": SECURITY_NOTICE,
             "error": {
                 "code": "INVALID_CONFIGURATION",
-                "message": "The read-only Yandex Mail plugin configuration is invalid.",
+                "message": "The Yandex Mail plugin configuration is invalid.",
             },
         }
     )
@@ -116,8 +120,24 @@ def _read_message(args: Dict[str, Any], **kwargs: Any) -> str:
     )
 
 
+def _mark_read(args: Dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+    if not isinstance(args, dict):
+        args = {}
+    try:
+        mailbox = _build_mailbox()
+    except Exception:  # noqa: BLE001 - configuration values must not leak
+        return _configuration_error()
+    return _json_result(
+        mailbox.mark_read(
+            args.get("uid"),
+            expected_uidvalidity=args.get("uidvalidity"),
+        )
+    )
+
+
 def register(ctx: Any) -> None:
-    """Register the two narrow, read-only mailbox tools."""
+    """Register the three narrow mailbox tools."""
     ctx.register_tool(
         name="yandex_mail_list_inbox",
         toolset="yandex_mail",
@@ -131,4 +151,11 @@ def register(ctx: Any) -> None:
         schema=YANDEX_MAIL_READ_MESSAGE,
         handler=_read_message,
         description="Read one Yandex Mail INBOX message by IMAP UID (strictly read-only).",
+    )
+    ctx.register_tool(
+        name="yandex_mail_mark_read",
+        toolset="yandex_mail",
+        schema=YANDEX_MAIL_MARK_READ,
+        handler=_mark_read,
+        description="Mark one verified Yandex Mail INBOX message as read.",
     )

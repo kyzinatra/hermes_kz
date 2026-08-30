@@ -37,14 +37,18 @@ RUN printf '%s\n' \
 COPY scripts/hermes_korea_gateway.py /opt/hermes/bin/hermes_korea_gateway.py
 COPY scripts/gateway_egress_proxy.py /opt/hermes/bin/gateway_egress_proxy.py
 COPY scripts/hermes_yandex_mail.py /opt/hermes/bin/hermes_yandex_mail.py
+COPY scripts/hermes_writable_state_init.sh /etc/cont-init.d/014-hermes-writable-state
 # The production gateway is owned by Docker CMD.  Replacing upstream profile
 # reconciliation prevents persisted state from launching a second poller.
 COPY scripts/hermes_single_gateway_init.sh /etc/cont-init.d/02-reconcile-profiles
-RUN sed -i 's/\r$//' /etc/cont-init.d/02-reconcile-profiles && \
+RUN sed -i 's/\r$//' \
+      /etc/cont-init.d/014-hermes-writable-state \
+      /etc/cont-init.d/02-reconcile-profiles && \
     chmod 755 \
       /opt/hermes/bin/hermes_korea_gateway.py \
       /opt/hermes/bin/gateway_egress_proxy.py \
       /opt/hermes/bin/hermes_yandex_mail.py \
+      /etc/cont-init.d/014-hermes-writable-state \
       /etc/cont-init.d/02-reconcile-profiles && \
     /opt/hermes/.venv/bin/python -m py_compile \
       /opt/hermes/bin/hermes_korea_gateway.py \

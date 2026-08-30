@@ -101,6 +101,10 @@ version-controlled skills смонтированы для записи. `.env` �
 Tavily, Kakao и Yandex credentials отправляются только на закреплённые
 официальные endpoints.
 
+При каждом старте init исправляет владельца `memories/MEMORY.md`, `USER.md` и
+их lock-файлов на пользователя `hermes`. Для одноразовых Compose-команд также
+используйте `--user hermes`, чтобы снова не создать root-owned state.
+
 ## Google Workspace
 
 В Google Cloud включите Gmail API, Google Calendar API, Google Drive API,
@@ -125,21 +129,24 @@ bash scripts/google-workspace.sh auth-code \
 bash scripts/google-workspace.sh check-live
 ```
 
-## Яндекс Почта — только чтение
+## Яндекс Почта — чтение и отметка прочитанным
 
-Интеграция использует OAuth, а не пароль от аккаунта. На стороне Яндекса токен
-ограничен scope `mail:imap_ro`; Hermes дополнительно открывает только `INBOX` в
-режиме `EXAMINE` и читает через `BODY.PEEK`, поэтому письма не помечаются как
-прочитанные. Инструментов отправки, удаления, перемещения и изменения флагов в
-плагине нет.
+Интеграция использует OAuth, а не пароль от аккаунта. Согласно
+[официальной документации Яндекса](https://yandex.ru/support/yandex-360/business/mail/ru/web/security/oauth),
+токен имеет scope `mail:imap_full`: Яндекс не предоставляет отдельного права только
+для изменения флага `Seen`. Hermes открывает только `INBOX`; list/read используют
+`EXAMINE` и `BODY.PEEK`, а отдельный mark-read добавляет только `\\Seen` командой
+`UID STORE +FLAGS.SILENT`. Инструментов отправки, удаления, перемещения, copy,
+expunge, append или произвольного изменения флагов в плагине нет.
 
 1. В настройках Яндекс Почты в разделе «Почтовые программы» включите IMAP и
    «Пароли приложений и OAuth-токены».
 2. [Создайте OAuth-приложение](https://oauth.yandex.ru/client/new/id/) типа
    «Для авторизации пользователей». Для платформы «Веб-сервисы» укажите
    Redirect URI `https://oauth.yandex.ru/verification_code` и выберите только
-   право «Доступ на чтение писем в почтовом ящике» (`mail:imap_ro`). Не
-   добавляйте `mail:imap_full` или `mail:smtp`.
+   право «Чтение и удаление писем в почтовом ящике» (`mail:imap_full`). Не
+   добавляйте `mail:smtp` или другие scopes. Более широкое название права —
+   ограничение API Яндекса; сам plugin не регистрирует удаление.
 3. Создайте закрытый файл с Client ID, Client secret и полным адресом ящика:
 
 ```bash
@@ -166,16 +173,18 @@ bash scripts/yandex-mail.sh check-live
 bash scripts/yandex-mail.sh chat
 ```
 
-Перед запуском сессия fail-closed перепроверяет регистрацию и точный состав
-двух read-only mail tools; при ошибке плагина TUI не откроется. Процесс проходит
+После обновления с `mail:imap_ro` обязательно повторите `auth-url` и `auth-code`:
+старый токен намеренно отклоняется как недостаточный. Перед запуском сессия
+fail-closed перепроверяет регистрацию и точный состав трёх mail tools; при
+ошибке плагина TUI не откроется. Процесс проходит
 штатный container bootstrap и работает от пользователя `hermes`, а не `root`.
 Тот же toolset доступен напрямую в личном Telegram, CLI и cron. Внутри сессии
 попросите, например: «Покажи пять последних писем из Входящих».
 
-У Яндекса нет отдельного OAuth scope только для папки «Входящие»:
-`mail:imap_ro` разрешает чтение всего ящика. Ограничение до `INBOX` обеспечивает
-сам плагин Hermes. Содержимое вложений не передаётся модели; видны только их
-имена и MIME-типы. Письма крупнее безопасного лимита плагин читать отказывается.
+У Яндекса нет отдельных OAuth scopes только для `INBOX` или только для флага
+`Seen`. Ограничения обеспечивает сам plugin Hermes. Содержимое вложений не
+передаётся модели; видны только их имена и MIME-типы. Письма крупнее безопасного
+лимита plugin читать отказывается.
 
 ## Душа и операционные skills
 
@@ -352,8 +361,8 @@ docker compose exec hermes hermes backup \
 git pull --ff-only
 docker compose config --quiet
 docker compose build --pull
-docker compose run --rm --no-deps \
-  --entrypoint /opt/hermes/.venv/bin/hermes hermes config check
+docker compose run --rm --no-deps hermes \
+  /opt/hermes/.venv/bin/hermes config check
 
 # Явно останавливаем и удаляем прежний контейнер. Не добавляйте `-v`:
 # постоянные данные при редеплое удалять нельзя.
