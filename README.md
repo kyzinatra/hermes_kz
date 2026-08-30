@@ -351,7 +351,17 @@ docker compose exec hermes hermes backup \
 git pull --ff-only
 docker compose config --quiet
 docker compose build --pull
+docker compose run --rm --no-deps \
+  --entrypoint /opt/hermes/.venv/bin/hermes hermes config check
+
+# Явно останавливаем и удаляем прежний контейнер. Не добавляйте `-v`:
+# постоянные данные при редеплое удалять нельзя.
+docker compose down --remove-orphans --timeout 120
 docker compose up -d --remove-orphans
 docker compose ps
 docker compose logs --tail=100 hermes
 ```
+
+В этой сборке у gateway только один владелец жизненного цикла — защищённый
+Docker `CMD`. Автовосстановление профиля через s6 отключено, поэтому сохранённый
+`gateway_state.json` не сможет поднять второй Telegram poller параллельно.

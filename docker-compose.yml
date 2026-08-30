@@ -12,24 +12,23 @@ services:
     environment:
       HERMES_UID: ${HERMES_UID:-1000}
       HERMES_GID: ${HERMES_GID:-1000}
+      HERMES_GATEWAY_NO_SUPERVISE: "1"
       TZ: ${TZ:-Asia/Vladivostok}
     volumes:
       - ./runtime:/opt/data
       - ./config.yaml:/opt/data/config.yaml:ro
-      # Secrets are read by Hermes from this file, not duplicated into the
-      # container environment where `docker inspect` would expose them.
+      # Secrets stay in the mounted file instead of `docker inspect` output.
       - ./.env:/opt/data/.env:ro
       - ./SOUL.md:/opt/data/SOUL.md:ro
       - ./skills:/opt/data/custom-skills:ro
       - ./memories:/opt/data/memories
       - ./knowledge:/opt/data/knowledge
-      # Mount the parent read-only: leaving /opt/data/plugins writable would let
-      # a compromised terminal session plant importable Python beside the plugins.
+      # Read-only prevents runtime code from planting importable plugins.
       - ./plugins:/opt/data/plugins:ro
       - ./credentials:/credentials:ro
       - ./backups:/backup
     shm_size: "1gb"
-    stop_grace_period: 30s
+    stop_grace_period: 60s
     logging:
       driver: json-file
       options:

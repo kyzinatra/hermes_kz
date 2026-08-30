@@ -34,24 +34,24 @@ RUN printf '%s\n' \
     /bin/bash -lc \
       'python -c "import googleapiclient, google_auth_oauthlib"'
 
-# The normal Hermes plugin loader is intentionally non-fatal.  Telegram
-# coordinates need a stronger boundary, so the production gateway starts via
-# a launcher that lets Hermes resolve its active profile, then installs and
-# asserts the Korea ingress guard before CLI dispatch starts any adapter.
 COPY scripts/hermes_korea_gateway.py /opt/hermes/bin/hermes_korea_gateway.py
 COPY scripts/gateway_egress_proxy.py /opt/hermes/bin/gateway_egress_proxy.py
 COPY scripts/hermes_yandex_mail.py /opt/hermes/bin/hermes_yandex_mail.py
-RUN chmod 755 \
+# The production gateway is owned by Docker CMD.  Replacing upstream profile
+# reconciliation prevents persisted state from launching a second poller.
+COPY scripts/hermes_single_gateway_init.sh /etc/cont-init.d/02-reconcile-profiles
+RUN sed -i 's/\r$//' /etc/cont-init.d/02-reconcile-profiles && \
+    chmod 755 \
       /opt/hermes/bin/hermes_korea_gateway.py \
       /opt/hermes/bin/gateway_egress_proxy.py \
-      /opt/hermes/bin/hermes_yandex_mail.py && \
+      /opt/hermes/bin/hermes_yandex_mail.py \
+      /etc/cont-init.d/02-reconcile-profiles && \
     /opt/hermes/.venv/bin/python -m py_compile \
       /opt/hermes/bin/hermes_korea_gateway.py \
       /opt/hermes/bin/gateway_egress_proxy.py \
       /opt/hermes/bin/hermes_yandex_mail.py
 
-# Make the guarded gateway the image-level default as well as the Compose
-# default.  Explicit administrative commands still override CMD normally.
+# Explicit administrative commands still override this default normally.
 CMD ["/opt/hermes/.venv/bin/python", "/opt/hermes/bin/hermes_korea_gateway.py", "gateway", "run", "--no-supervise", "--external-supervisor"]
 
 LABEL org.opencontainers.image.title="Hermes Personal Assistant"

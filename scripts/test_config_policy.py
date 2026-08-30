@@ -100,6 +100,21 @@ class ConfigPolicyTests(unittest.TestCase):
         self.assertIn("  restrict_evaluate: true", config_text)
         self.assertIn("  allow_unsafe_evaluate: false", config_text)
 
+    def test_single_gateway_has_one_external_supervisor(self) -> None:
+        compose_text = (ROOT / "docker-compose.yml").read_text("utf-8")
+        dockerfile_text = (ROOT / "Dockerfile").read_text("utf-8")
+        init_text = (
+            ROOT / "scripts" / "hermes_single_gateway_init.sh"
+        ).read_text("utf-8")
+        self.assertIn('HERMES_GATEWAY_NO_SUPERVISE: "1"', compose_text)
+        self.assertIn("stop_grace_period: 60s", compose_text)
+        self.assertIn(
+            "COPY scripts/hermes_single_gateway_init.sh "
+            "/etc/cont-init.d/02-reconcile-profiles",
+            dockerfile_text,
+        )
+        self.assertIn("single guarded gateway", init_text)
+
 
 if __name__ == "__main__":
     unittest.main()
