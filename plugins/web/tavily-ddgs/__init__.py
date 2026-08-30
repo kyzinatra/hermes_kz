@@ -1,4 +1,4 @@
-"""Tavily-primary search provider with a DDGS fallback."""
+"""Cost-aware DDGS/Tavily search router and Tavily extractor."""
 
 from .provider import TavilyDdgsWebSearchProvider
 

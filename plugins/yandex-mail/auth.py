@@ -28,7 +28,9 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 
-PathLike = Union[str, os.PathLike[str]]
+# ``os.PathLike`` only became subscriptable at runtime in newer Python
+# versions.  Keep this alias importable on Hermes' supported Python 3.8.
+PathLike = Union[str, os.PathLike]
 OpenUrl = Callable[..., Any]
 
 DEFAULT_CREDENTIALS_PATH = Path("/credentials/yandex-mail-oauth.json")

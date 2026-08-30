@@ -5,26 +5,27 @@ services:
     build:
       context: .
       args:
-        HERMES_IMAGE: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.7.20}
+        HERMES_IMAGE: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.8.27@sha256:e0df6adebddf29b91112aefc999d4aaf6846c9eb544faca5672a16a13590ff79}
         INSTALL_LOCAL_STT: ${INSTALL_LOCAL_STT:-true}
     image: hermes-personal:latest
     restart: unless-stopped
-    command: ["gateway", "run"]
-    env_file:
-      - .env
     environment:
       HERMES_UID: ${HERMES_UID:-1000}
       HERMES_GID: ${HERMES_GID:-1000}
-      TZ: ${TZ:-Europe/Moscow}
+      TZ: ${TZ:-Asia/Vladivostok}
     volumes:
       - ./runtime:/opt/data
-      - ./config.yaml:/opt/data/config.yaml
-      - ./.env:/opt/data/.env
+      - ./config.yaml:/opt/data/config.yaml:ro
+      # Secrets are read by Hermes from this file, not duplicated into the
+      # container environment where `docker inspect` would expose them.
+      - ./.env:/opt/data/.env:ro
       - ./SOUL.md:/opt/data/SOUL.md:ro
+      - ./skills:/opt/data/custom-skills:ro
       - ./memories:/opt/data/memories
       - ./knowledge:/opt/data/knowledge
-      - ./plugins/web/tavily-ddgs:/opt/data/plugins/web/tavily-ddgs:ro
-      - ./plugins/yandex-mail:/opt/data/plugins/yandex-mail:ro
+      # Mount the parent read-only: leaving /opt/data/plugins writable would let
+      # a compromised terminal session plant importable Python beside the plugins.
+      - ./plugins:/opt/data/plugins:ro
       - ./credentials:/credentials:ro
       - ./backups:/backup
     shm_size: "1gb"

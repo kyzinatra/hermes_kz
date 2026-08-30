@@ -1,0 +1,14 @@
+name: korea
+version: 1.0.0
+description: "Korea place, address, route, browser-handoff, and Kakao link tools backed by official Kakao APIs."
+author: Hermes Personal
+kind: standalone
+provides_hooks:
+  - pre_gateway_dispatch
+provides_tools:
+  - korea_place_search
+  - korea_geocode
+  - korea_reverse_geocode
+  - korea_route
+  - korea_shopping_search
+  - korea_kakao_links

@@ -1,0 +1,7 @@
+# Runtime web and speech-output additions to the pinned Hermes base image.
+ddgs==9.14.4
+edge-tts==7.2.7
+# Upstream v2026.8.27 ships msal 1.36.0 with cryptography<49 while the base
+# intentionally carries security-patched cryptography 50.0.0.  MSAL 1.38.0
+# officially raises that ceiling to <51.
+msal==1.38.0

@@ -8,7 +8,7 @@ agent:
   api_max_retries: 3
   verify_on_stop: false
   gateway_timeout_warning: 1200
-  reasoning_effort: medium
+  reasoning_effort: high
   verbose: false
 terminal:
   backend: local
@@ -19,9 +19,23 @@ web:
   search_backend: tavily-ddgs
   extract_backend: tavily-ddgs
   extract_char_limit: 15000
+  # The composite provider owns every DDGS/Tavily decision. Disable Hermes'
+  # outer rescue ring so it cannot bypass our intent/quality/cost policy.
+  keyless_rescue: false
+  keyless_fallback: false
 browser:
+  # Hermes defaults to the Browser Use CLI when this key is absent. `off`
+  # explicitly selects the reviewed built-in browser_* implementation.
+  backend: off
   inactivity_timeout: 120
   engine: chrome
+  # Telegram has browser but deliberately has no terminal. The gateway adds a
+  # mandatory connect-time filtering proxy; these upstream checks remain a
+  # second layer and sensitive JS evaluation stays restricted.
+  allow_private_urls: false
+  auto_local_for_private_urls: false
+  restrict_evaluate: true
+  allow_unsafe_evaluate: false
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: true
@@ -70,7 +84,7 @@ stt:
 memory:
   memory_enabled: true
   user_profile_enabled: true
-  write_approval: false
+  write_approval: true
   memory_char_limit: 2200
   user_char_limit: 1375
   provider: holographic
@@ -83,24 +97,30 @@ delegation:
   orchestrator_enabled: true
   subagent_auto_approve: false
 skills:
+  # Version-controlled policy skills are mounted read-only outside the
+  # Hermes-managed /opt/data/skills tree, so bundled skill sync remains intact.
+  external_dirs:
+    - custom-skills
   guard_agent_created: true
-  write_approval: false
+  write_approval: true
   creation_nudge_interval: 20
 approvals:
-  destructive_slash_confirm: false
+  destructive_slash_confirm: true
 security:
   redact_secrets: true
   tirith_enabled: true
   tirith_path: tirith
   tirith_timeout: 5
-  tirith_fail_open: true
+  tirith_fail_open: false
 streaming:
   enabled: true
   transport: edit
 onboarding:
   seen:
     busy_input_prompt: true
-_config_version: 33
+# Schema of the pinned v2026.8.27 image. Keeping this explicit prevents its
+# v37 migration from silently changing our intentional child-cost cap 3 -> 10.
+_config_version: 39
 plugins:
   hermes-memory-store:
     db_path: /opt/data/memory_store.db
@@ -108,12 +128,9 @@ plugins:
     default_trust: 0.6
   enabled:
     - web/tavily-ddgs
+    - korea
     - yandex-mail
-    - yandex-mail-flags
   disabled: []
-  entries:
-    yandex-mail-flags:
-      allow_tool_override: false
 session_reset:
   mode: idle
   idle_minutes: 10080
@@ -122,8 +139,88 @@ group_sessions_per_user: true
 platform_toolsets:
   cli:
     - hermes-cli
+    - korea
   telegram:
-    - hermes-telegram
+    # Deliberately no terminal, file, code_execution, delegation, or cronjob:
+    # Telegram consumes untrusted web content in the credentialed container.
+    # Mail is CLI-only so email prompt injection has no network-egress tool.
+    - web
+    - browser
+    - korea
+    # Exact v2026.8.27 sentinel: do not auto-inject configured MCP servers.
+    - no_mcp
+# Exact v2026.8.27 treats a plugin toolset as enabled on a platform until it
+# has been seen there once. Record both custom plugins for every built-in
+# platform so omission is always an explicit deny. Korea is then allowed only
+# above for CLI/Telegram; Yandex Mail is available only through its fail-closed
+# dedicated launcher.
+known_plugin_toolsets:
+  api_server:
+    - korea
+    - yandex_mail
+  bluebubbles:
+    - korea
+    - yandex_mail
+  cli:
+    - korea
+    - yandex_mail
+  cron:
+    - korea
+    - yandex_mail
+  dingtalk:
+    - korea
+    - yandex_mail
+  discord:
+    - korea
+    - yandex_mail
+  email:
+    - korea
+    - yandex_mail
+  feishu:
+    - korea
+    - yandex_mail
+  homeassistant:
+    - korea
+    - yandex_mail
+  matrix:
+    - korea
+    - yandex_mail
+  mattermost:
+    - korea
+    - yandex_mail
+  qqbot:
+    - korea
+    - yandex_mail
+  signal:
+    - korea
+    - yandex_mail
+  slack:
+    - korea
+    - yandex_mail
+  telegram:
+    - korea
+    - yandex_mail
+  webhook:
+    - korea
+    - yandex_mail
+  wecom:
+    - korea
+    - yandex_mail
+  wecom_callback:
+    - korea
+    - yandex_mail
+  weixin:
+    - korea
+    - yandex_mail
+  whatsapp:
+    - korea
+    - yandex_mail
+  whatsapp_cloud:
+    - korea
+    - yandex_mail
+  yuanbao:
+    - korea
+    - yandex_mail
 platforms:
   telegram:
     reply_to_mode: first

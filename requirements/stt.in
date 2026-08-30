@@ -1,0 +1,3 @@
+# Optional local speech-to-text additions.
+faster-whisper==1.2.1
+numpy==2.4.3

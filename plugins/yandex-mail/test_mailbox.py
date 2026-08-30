@@ -7,11 +7,13 @@ from email import policy
 import importlib.util
 import imaplib
 import json
+import os
 from pathlib import Path
 import ssl
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 
 _MODULE_PATH = Path(__file__).with_name("mailbox.py")
@@ -168,6 +170,46 @@ def _client(
 
 
 class YandexReadonlyMailboxTests(unittest.TestCase):
+    def test_plugin_ignores_imap_endpoint_environment_overrides(self):
+        plugin_dir = Path(__file__).parent
+        package_name = "_yandex_mail_plugin_endpoint_test"
+        spec = importlib.util.spec_from_file_location(
+            package_name,
+            plugin_dir / "__init__.py",
+            submodule_search_locations=[str(plugin_dir)],
+        )
+        assert spec is not None and spec.loader is not None
+
+        auth_stub = types.ModuleType(f"{package_name}.auth")
+        auth_stub.get_access_token = lambda: (
+            "reader@yandex.ru",
+            "contract-test-token",
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[package_name] = module
+        sys.modules[f"{package_name}.auth"] = auth_stub
+
+        try:
+            spec.loader.exec_module(module)
+            with patch.dict(
+                os.environ,
+                {
+                    "YANDEX_MAIL_IMAP_HOST": "attacker.example",
+                    "YANDEX_MAIL_IMAP_PORT": "1",
+                },
+            ):
+                mailbox = module._build_mailbox()
+
+            self.assertEqual(mailbox._host, module.DEFAULT_IMAP_HOST)
+            self.assertEqual(mailbox._port, module.DEFAULT_IMAP_PORT)
+            self.assertEqual((mailbox._host, mailbox._port), ("imap.ya.ru", 993))
+        finally:
+            for loaded_name in list(sys.modules):
+                if loaded_name == package_name or loaded_name.startswith(
+                    f"{package_name}."
+                ):
+                    sys.modules.pop(loaded_name, None)
+
     def test_hermes_style_plugin_load_registers_exactly_two_json_tools(self):
         plugin_dir = Path(__file__).parent
         package_name = "_yandex_mail_plugin_contract_test"
@@ -340,6 +382,112 @@ class YandexReadonlyMailboxTests(unittest.TestCase):
         self.assertFalse(envelope["unread"])
         self.assertIn("\\Seen", envelope["flags"])
         self.assertIsInstance(envelope["size_bytes"], int)
+
+    def test_oversized_headers_and_flags_are_bounded(self):
+        oversized = "x" * (_MAILBOX.MAX_DECODED_HEADER_CHARS + 200)
+        raw_message = _plain_message(subject=oversized)
+        long_flag = "f" * (_MAILBOX.MAX_FLAG_CHARS + 50)
+        flags = " ".join(
+            [long_flag]
+            + [f"keyword-{index}" for index in range(_MAILBOX.MAX_FLAG_COUNT + 5)]
+            + ["\\Seen"]
+        )
+        fake = FakeIMAP(search_uids=b"9")
+        fake.add_message("9", raw_message, flags=flags)
+        mailbox, _factory = _client(fake)
+
+        result = mailbox.list_inbox()
+
+        envelope = result["messages"][0]
+        for field in ("from", "to", "subject", "date", "message_id"):
+            self.assertLessEqual(
+                len(envelope[field]),
+                _MAILBOX.MAX_DECODED_HEADER_CHARS,
+            )
+        self.assertEqual(envelope["header_fields_truncated"], ["subject"])
+        self.assertLessEqual(len(envelope["flags"]), _MAILBOX.MAX_FLAG_COUNT)
+        self.assertTrue(
+            all(len(flag) <= _MAILBOX.MAX_FLAG_CHARS for flag in envelope["flags"])
+        )
+        self.assertTrue(envelope["flags_truncated"])
+        self.assertFalse(envelope["unread"])
+
+    def test_raw_header_fetch_and_parser_are_bounded_before_decode(self):
+        oversized_header = (
+            b"From: sender@example.com\r\nSubject: "
+            + b"x" * (_MAILBOX.MAX_HEADER_BYTES * 2)
+            + b"\r\n\r\n"
+        )
+        fake = FakeIMAP(search_uids=b"11")
+        fake.headers["11"] = (oversized_header, len(oversized_header), "")
+        mailbox, _factory = _client(fake)
+        parsed_lengths = []
+        real_parser = _MAILBOX.BytesParser
+
+        class RecordingParser:
+            def __init__(self, *args, **kwargs):
+                self._delegate = real_parser(*args, **kwargs)
+
+            def parsebytes(self, data, *args, **kwargs):
+                parsed_lengths.append(len(data))
+                return self._delegate.parsebytes(data, *args, **kwargs)
+
+        with patch.object(_MAILBOX, "BytesParser", RecordingParser):
+            result = mailbox.list_inbox()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(parsed_lengths, [_MAILBOX.MAX_HEADER_BYTES])
+        self.assertTrue(result["messages"][0]["header_bytes_truncated"])
+        header_fetches = [
+            call[-1]
+            for call in fake.calls
+            if call[:2] == ("UID", "FETCH") and "HEADER.FIELDS" in call[-1]
+        ]
+        self.assertEqual(len(header_fetches), 1)
+        self.assertIn(f"<0.{_MAILBOX.MAX_HEADER_BYTES}>", header_fetches[0])
+
+    def test_attachment_count_and_filename_lengths_are_bounded(self):
+        message = EmailMessage()
+        message["From"] = "sender@example.com"
+        message["To"] = "reader@yandex.ru"
+        message["Subject"] = "Many attachments"
+        message.set_content("Visible body")
+        oversized_filename = "f" * (
+            _MAILBOX.MAX_ATTACHMENT_FILENAME_CHARS + 100
+        )
+        for index in range(_MAILBOX.MAX_ATTACHMENT_COUNT + 5):
+            message.add_attachment(
+                b"x",
+                maintype="application",
+                subtype="octet-stream",
+                filename=f"{index}-{oversized_filename}.bin",
+            )
+        raw_message = message.as_bytes(policy=policy.SMTP)
+        fake = FakeIMAP(search_uids=b"19")
+        fake.add_message("19", raw_message)
+        mailbox, _factory = _client(fake)
+
+        result = mailbox.read_message("19", expected_uidvalidity="777")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            len(result["attachments"]),
+            _MAILBOX.MAX_ATTACHMENT_COUNT,
+        )
+        self.assertTrue(result["attachments_truncated"])
+        self.assertTrue(
+            all(
+                len(attachment["filename"])
+                <= _MAILBOX.MAX_ATTACHMENT_FILENAME_CHARS
+                for attachment in result["attachments"]
+            )
+        )
+        self.assertTrue(
+            all(
+                attachment["filename_truncated"]
+                for attachment in result["attachments"]
+            )
+        )
 
     def test_read_plain_body_and_only_attachment_metadata(self):
         attachment_secret = b"ATTACHMENT-CONTENT-MUST-NOT-LEAK"

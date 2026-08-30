@@ -68,7 +68,7 @@ run_setup() {
 }
 
 usage() {
-  echo "Usage: $0 {status|auth-url|auth-code|check-live}"
+  echo "Usage: $0 {status|auth-url|auth-code|check-live|chat}"
 }
 
 command_name="${1:-}"
@@ -85,6 +85,18 @@ case "${command_name}" in
     fi
     prepare_credentials
     run_setup auth-code
+    ;;
+  chat)
+    if [[ $# -ne 1 ]]; then
+      usage >&2
+      exit 2
+    fi
+    prepare_credentials
+    # Email is untrusted input.  The fail-closed launcher verifies the exact
+    # two-tool mail plugin before TUI dispatch.  Keep the image entrypoint so
+    # upstream bootstrap/init still drops privileges to the hermes user.
+    docker compose run --rm --no-deps hermes \
+      python /opt/hermes/bin/hermes_yandex_mail.py
     ;;
   *)
     usage >&2

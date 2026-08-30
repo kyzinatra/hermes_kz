@@ -52,13 +52,6 @@ def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
 
 
 def _build_mailbox() -> YandexReadonlyMailbox:
-    host = os.getenv("YANDEX_MAIL_IMAP_HOST", DEFAULT_IMAP_HOST).strip()
-    port = _env_int(
-        "YANDEX_MAIL_IMAP_PORT",
-        DEFAULT_IMAP_PORT,
-        minimum=1,
-        maximum=65535,
-    )
     timeout = _env_int(
         "YANDEX_MAIL_IMAP_TIMEOUT",
         int(DEFAULT_TIMEOUT_SECONDS),
@@ -79,8 +72,10 @@ def _build_mailbox() -> YandexReadonlyMailbox:
     )
     return YandexReadonlyMailbox(
         token_provider=get_access_token,
-        host=host,
-        port=port,
+        # OAuth bearer tokens must only be sent to Yandex's official IMAP
+        # endpoint.  Host and port are intentionally not configurable.
+        host=DEFAULT_IMAP_HOST,
+        port=DEFAULT_IMAP_PORT,
         timeout=timeout,
         body_char_limit=body_char_limit,
         max_message_bytes=max_message_bytes,
