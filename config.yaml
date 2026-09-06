@@ -8,7 +8,7 @@ agent:
   api_max_retries: 3
   verify_on_stop: false
   gateway_timeout_warning: 1200
-  reasoning_effort: high
+  reasoning_effort: medium
   verbose: false
 terminal:
   backend: local
@@ -19,23 +19,16 @@ web:
   search_backend: tavily-ddgs
   extract_backend: tavily-ddgs
   extract_char_limit: 15000
-  # The composite provider owns every DDGS/Tavily decision. Disable Hermes'
-  # outer rescue ring so it cannot bypass our intent/quality/cost policy.
-  keyless_rescue: false
   keyless_fallback: false
+  keyless_rescue: false
 browser:
-  # Hermes defaults to the Browser Use CLI when this key is absent. `off`
-  # explicitly selects the reviewed built-in browser_* implementation.
-  backend: off
+  backend: false
   inactivity_timeout: 120
-  engine: chrome
-  # Telegram has browser but deliberately has no terminal. The gateway adds a
-  # mandatory connect-time filtering proxy; these upstream checks remain a
-  # second layer and sensitive JS evaluation stays restricted.
   allow_private_urls: false
+  engine: chrome
   auto_local_for_private_urls: false
-  restrict_evaluate: true
   allow_unsafe_evaluate: false
+  restrict_evaluate: true
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: true
@@ -49,15 +42,16 @@ tool_loop_guardrails:
     idempotent_no_progress: 5
 compression:
   enabled: true
+  progress_notices: false
   threshold: 0.5
   target_ratio: 0.2
   protect_last_n: 20
-  progress_notices: false
 display:
   compact: true
   busy_input_mode: steer
   show_reasoning: false
   memory_notifications: verbose
+  background_process_notifications: result
   interim_assistant_messages: true
   platforms:
     telegram:
@@ -66,29 +60,32 @@ display:
   cleanup_progress: true
   long_running_notifications: true
   busy_ack_detail: false
-  background_process_notifications: result
 tts:
-  provider: edge
+  provider: nous
   edge:
     voice: ru-RU-DmitryNeural
     speed: 1.0
+  openai:
+    model: gpt-4o-mini-tts
+    voice: cedar
+    speed: 0.96
   speed: 1.0
 stt:
   enabled: true
-  provider: local
+  language: ru
   local:
     model: base
     language: ru
     initial_prompt: Русская речь, имена, технические термины и англицизмы.
-  language: ru
+  provider: local
 memory:
   memory_enabled: true
   user_profile_enabled: true
   write_approval: false
   memory_char_limit: 2200
   user_char_limit: 1375
-  provider: holographic
   nudge_interval: 10
+  provider: holographic
   flush_min_turns: 6
 delegation:
   max_iterations: 40
@@ -97,30 +94,14 @@ delegation:
   orchestrator_enabled: true
   subagent_auto_approve: false
 skills:
-  # Version-controlled policy skills are exposed alongside the writable
-  # Hermes-managed /opt/data/skills tree.
   external_dirs:
     - custom-skills
   guard_agent_created: true
   write_approval: false
   creation_nudge_interval: 20
+timezone: Asia/Vladivostok
 approvals:
-  destructive_slash_confirm: true
-security:
-  redact_secrets: true
-  tirith_enabled: true
-  tirith_path: tirith
-  tirith_timeout: 5
-  tirith_fail_open: false
-streaming:
-  enabled: true
-  transport: edit
-onboarding:
-  seen:
-    busy_input_prompt: true
-# Schema of the pinned v2026.8.27 image. Keeping this explicit prevents its
-# v37 migration from silently changing our intentional child-cost cap 3 -> 10.
-_config_version: 39
+  destructive_slash_confirm: false
 plugins:
   hermes-memory-store:
     db_path: /opt/data/memory_store.db
@@ -131,6 +112,21 @@ plugins:
     - korea
     - yandex-mail
   disabled: []
+security:
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: false
+streaming:
+  enabled: true
+  transport: edit
+  edit_interval: 4.0
+  buffer_threshold: 96
+onboarding:
+  seen:
+    busy_input_prompt: true
+_config_version: 39
 session_reset:
   mode: idle
   idle_minutes: 10080
@@ -147,17 +143,10 @@ platform_toolsets:
     - yandex_mail
     - no_mcp
   telegram:
-    # Personal bot: full first-party toolset plus reviewed local plugins.
     - hermes-telegram
     - korea
     - yandex_mail
-    # MCP remains opt-in; local files, terminal, skills, cron and delegation are
-    # provided by hermes-telegram and do not depend on MCP registration.
     - no_mcp
-# Exact v2026.8.27 treats a plugin toolset as enabled on a platform until it
-# has been seen there once. Record both custom plugins for every built-in
-# platform so omission is always an explicit deny. Korea is then allowed only
-# above for CLI/Telegram/cron.
 known_plugin_toolsets:
   api_server:
     - korea
@@ -243,4 +232,3 @@ image_gen:
   model: gpt-image-2-medium
   openai-codex:
     model: gpt-image-2-medium
-timezone: Asia/Vladivostok
