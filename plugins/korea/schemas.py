@@ -6,11 +6,47 @@ from __future__ import annotations
 _LOCATION_PRIVACY = (
     "For a Telegram static pin, prefer the opaque location_token created by the "
     "pre-dispatch privacy hook; never repeat its raw coordinates. The token is held "
-    "in process RAM for at most 10 minutes. It permits at most one successful place "
-    "search and one subsequent route; routing reserves it exclusively and consumes "
-    "it only after success, so a transient/API failure can be retried. Telegram "
-    "itself still receives the original pin."
+    "in process RAM for at most 10 minutes. It permits at most one successful "
+    "provider-neutral search-context lookup, one place search, and one subsequent "
+    "route; routing reserves it exclusively and consumes it only after success, so "
+    "a transient/API failure can be retried. Telegram itself still receives the "
+    "original pin."
 )
+
+
+LOCATION_SEARCH_CONTEXT = {
+    "name": "location_search_context",
+    "description": (
+        "Turn an ephemeral Telegram location_token into a coarse administrative "
+        "locality and a localized_query for Google, DDGS, Tavily, or browser "
+        "search. This is provider-neutral search context: it intentionally never "
+        "returns the coordinates, street, building, postal code, or exact address. "
+        "Use the returned localized_query with web_search or a browser. It is an "
+        "approximate area hint, not proof that a result is nearest. "
+        + _LOCATION_PRIVACY
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "location_token": {
+                "type": "string",
+                "pattern": "^loc_[A-Za-z0-9_-]{24,128}$",
+                "description": "Opaque token produced from a static Telegram pin.",
+            },
+            "query": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300,
+                "description": (
+                    "Optional search text to localize, for example 'dentist open "
+                    "now' or 'weather'."
+                ),
+            },
+        },
+        "required": ["location_token"],
+        "additionalProperties": False,
+    },
+}
 
 
 KOREA_PLACE_SEARCH = {

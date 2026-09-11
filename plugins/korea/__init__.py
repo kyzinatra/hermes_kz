@@ -21,6 +21,7 @@ from .schemas import (
     KOREA_REVERSE_GEOCODE,
     KOREA_ROUTE,
     KOREA_SHOPPING_SEARCH,
+    LOCATION_SEARCH_CONTEXT,
 )
 
 
@@ -152,6 +153,44 @@ def _geocode(args: Dict[str, Any], **kwargs: Any) -> str:
     return _handle(args, lambda client, values: client.geocode(**values))
 
 
+def _location_search_context(args: Dict[str, Any], **kwargs: Any) -> str:
+    del kwargs
+
+    def operation(client: KoreaApiClient, values: Dict[str, Any]) -> Dict[str, Any]:
+        if values.get("location_token") in (None, "") or any(
+            field in values for field in ("latitude", "longitude")
+        ):
+            raise KoreaApiError(
+                "INVALID_ARGUMENT",
+                "location_search_context requires one Telegram location_token.",
+                provider="validation",
+            )
+        resolved, reservation = _reserve_token_coordinates(
+            values,
+            token_field="location_token",
+            latitude_field="latitude",
+            longitude_field="longitude",
+            purpose="search_context",
+            required=True,
+        )
+        committed = False
+        try:
+            result = client.location_search_context(**resolved)
+            if result.get("success") is True:
+                committed = LOCATION_TOKENS.commit(reservation)
+                result.setdefault("meta", {})["location_token_state"] = (
+                    "search_context_use_consumed_other_uses_retained_until_ttl"
+                    if committed
+                    else "expired_during_successful_search_context"
+                )
+            return result
+        finally:
+            if reservation is not None and not committed:
+                LOCATION_TOKENS.release(reservation)
+
+    return _handle(args, operation)
+
+
 def _reverse_geocode(args: Dict[str, Any], **kwargs: Any) -> str:
     del kwargs
     safe_args = args if isinstance(args, dict) else {}
@@ -220,13 +259,19 @@ def _kakao_links(args: Dict[str, Any], **kwargs: Any) -> str:
 
 
 def register(ctx: Any) -> None:
-    """Register six narrow Korea tools and the Telegram privacy hook."""
+    """Register Korea and provider-neutral location tools plus the privacy hook."""
     if not install_location_ingress_guard(LOCATION_TOKENS):
         raise RuntimeError(
             "Korea plugin could not install its Telegram ingress privacy guard."
         )
     ctx.register_hook("pre_gateway_dispatch", PRE_GATEWAY_DISPATCH)
     registrations = [
+        (
+            "location_search_context",
+            LOCATION_SEARCH_CONTEXT,
+            _location_search_context,
+            "Prepare coarse location context for Google or general web search.",
+        ),
         (
             "korea_place_search",
             KOREA_PLACE_SEARCH,

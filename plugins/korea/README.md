@@ -1,7 +1,7 @@
 # Korea plugin
 
-Minimal Hermes tools backed by official Kakao HTTP APIs, plus a zero-API local
-browser handoff for shopping.
+Private Telegram location context and Korea tools backed by official Kakao HTTP
+APIs, plus a zero-API local browser handoff for shopping.
 
 ## Runtime secrets
 
@@ -34,17 +34,26 @@ and no-ops on that sentinel. A native **static** Telegram pin is stored only in
 process RAM under an unguessable `loc_*` token, and its coordinate-bearing
 text/raw message is replaced before pending/session persistence. The fixed TTL is
 10 minutes and the store is bounded to 128 locations. The token permits one
-successful nearby search and then one route. Each operation holds an exclusive
-in-process lease: a successful route consumes and zeroes the token, while an API
-failure releases the lease so the user can retry. Expiration and eviction actively
-erase the entry. `korea_reverse_geocode` rejects `location_token`: resolving a private
-current point into an exact address would make that location persistable in chat
-history. Nearby results expose only coarse distance bands and relative rank, never
-Kakao's exact origin-to-POI `distance_m`, which prevents straightforward
-triangulation across several known POIs. Token-based place searches also force a
-fixed 3 km radius and distance sort; caller-controlled radius probing cannot be
-used as a binary-search oracle. The route layer never returns origin coordinates,
-provider route landing URLs, path coordinates, or origin-bearing map links.
+successful coarse search-context lookup, one nearby search, and then one route.
+Each operation holds an exclusive in-process lease: a successful route consumes
+and zeroes the token, while an API failure releases the lease so the user can
+retry. Expiration and eviction actively erase the entry.
+
+`location_search_context` is the provider-neutral bridge for Google, DDGS,
+Tavily, and browser searches. It uses Kakao coordinate-to-address internally but
+returns only administrative locality names and an optional localized query. It
+discards coordinates, street/parcel addresses, building, postal code, and other
+exact fields before producing tool output. The coarse locality can be reused for
+several web searches in the task; it is an area hint, not an exact-nearest result.
+
+`korea_reverse_geocode` still rejects `location_token`: resolving a private current
+point into an exact address would make that location persistable in chat history.
+Nearby results expose only coarse distance bands and relative rank, never Kakao's
+exact origin-to-POI `distance_m`, which prevents straightforward triangulation
+across several known POIs. Token-based place searches also force a fixed 3 km
+radius and distance sort; caller-controlled radius probing cannot be used as a
+binary-search oracle. The route layer never returns origin coordinates, provider
+route landing URLs, path coordinates, or origin-bearing map links.
 
 Live location is intentionally unsupported. The initial live pin is rewritten to
 a coordinate-free instruction to send a static pin; Telegram edits of that live

@@ -47,6 +47,7 @@ from korea.schemas import (  # noqa: E402
     KOREA_PLACE_SEARCH,
     KOREA_REVERSE_GEOCODE,
     KOREA_ROUTE,
+    LOCATION_SEARCH_CONTEXT,
 )
 
 
@@ -211,7 +212,13 @@ class OfficialApiContractTests(unittest.TestCase):
                                     "building_name": "서울특별시청",
                                     "zone_no": "04524",
                                 },
-                                "address": {"address_name": "서울 중구 태평로1가 31"},
+                                "address": {
+                                    "address_name": "서울 중구 태평로1가 31",
+                                    "region_1depth_name": "서울특별시",
+                                    "region_2depth_name": "중구",
+                                    "region_3depth_name": "태평로1가",
+                                    "region_3depth_h_name": "소공동",
+                                },
                             }
                         ]
                     }
@@ -234,14 +241,34 @@ class OfficialApiContractTests(unittest.TestCase):
         client = KoreaApiClient(opener=opener, env_lookup=environment)
         geocoded = client.geocode("서울특별시 중구 세종대로 110")
         reversed_result = client.reverse_geocode(37.566, 126.978)
+        search_context = client.location_search_context(
+            37.566,
+            126.978,
+            query="late-night pharmacy",
+        )
 
         self.assertIn("/v2/local/search/address.json", calls[0])
         self.assertIn("/v2/local/geo/coord2address.json", calls[1])
+        self.assertIn("/v2/local/geo/coord2address.json", calls[2])
         self.assertEqual(geocoded["meta"]["provider_used"], "kakao_geocoding")
         self.assertEqual(
             reversed_result["data"]["results"][0]["building_name"],
             "서울특별시청",
         )
+        self.assertEqual(
+            search_context["data"]["localized_query"],
+            "late-night pharmacy 서울특별시 중구 소공동",
+        )
+        rendered_context = json.dumps(search_context, ensure_ascii=False)
+        for sensitive in (
+            "37.566",
+            "126.978",
+            "세종대로",
+            "서울특별시청",
+            "04524",
+            "태평로1가 31",
+        ):
+            self.assertNotIn(sensitive, rendered_context)
 
     def test_kakao_local_rejects_malformed_documents_contract(self) -> None:
         cases = [
@@ -256,6 +283,14 @@ class OfficialApiContractTests(unittest.TestCase):
             (
                 "reverse",
                 lambda client: client.reverse_geocode(37.566, 126.978),
+            ),
+            (
+                "location_context",
+                lambda client: client.location_search_context(
+                    37.566,
+                    126.978,
+                    query="pharmacy",
+                ),
             ),
         )
         for operation_name, operation in operations:
@@ -658,6 +693,7 @@ class LocationPrivacyTests(unittest.TestCase):
         token = token_match.group(0)
         self.assertEqual(store.peek(token), (ORIGIN_LATITUDE, ORIGIN_LONGITUDE))
         self.assertIsNone(event.raw_message)
+        self.assertIn("location_search_context", decision["text"])
         for sensitive in (
             str(ORIGIN_LATITUDE),
             str(ORIGIN_LONGITUDE),
@@ -934,6 +970,31 @@ class LocationPrivacyTests(unittest.TestCase):
         with self.assertRaises(LocationTokenError):
             store.peek(token)
 
+    def test_search_context_can_commit_once_without_blocking_place_or_route(
+        self,
+    ) -> None:
+        store = self._store()
+        token = store.issue(ORIGIN_LATITUDE, ORIGIN_LONGITUDE)
+
+        context, _latitude, _longitude = store.reserve(
+            token,
+            purpose="search_context",
+        )
+        self.assertTrue(store.commit(context))
+        with self.assertRaises(LocationTokenError) as reused:
+            store.reserve(token, purpose="search_context")
+        self.assertEqual(
+            reused.exception.code,
+            "LOCATION_TOKEN_SEARCH_CONTEXT_USED",
+        )
+
+        place, _latitude, _longitude = store.reserve(token, purpose="place_search")
+        self.assertTrue(store.commit(place))
+        route, _latitude, _longitude = store.reserve(token, purpose="route")
+        self.assertTrue(store.commit(route))
+        with self.assertRaises(LocationTokenError):
+            store.peek(token)
+
     def test_stale_reservation_cannot_affect_reissued_identical_token(self) -> None:
         store = LocationTokenStore(
             ttl_seconds=LOCATION_TTL_SECONDS,
@@ -955,6 +1016,20 @@ class LocationPrivacyTests(unittest.TestCase):
         seen: List[Any] = []
 
         class FakeClient:
+            def location_search_context(self, **kwargs: Any) -> Dict[str, Any]:
+                seen.append(("context", kwargs))
+                return {
+                    "success": True,
+                    "meta": {
+                        "provider": "kakao_geocoding",
+                        "provider_used": "kakao_geocoding",
+                    },
+                    "data": {
+                        "locality": "서울특별시 중구 소공동",
+                        "localized_query": "라멘 서울특별시 중구 소공동",
+                    },
+                }
+
             def place_search(self, **kwargs: Any) -> Dict[str, Any]:
                 seen.append(("place", kwargs))
                 return {
@@ -979,6 +1054,12 @@ class LocationPrivacyTests(unittest.TestCase):
             "KoreaApiClient",
             return_value=FakeClient(),
         ):
+            context_output = korea._location_search_context(
+                {"query": "라멘", "location_token": token}
+            )
+            second_context_output = korea._location_search_context(
+                {"query": "라멘", "location_token": token}
+            )
             place_output = korea._place_search(
                 {"query": "라멘", "location_token": token}
             )
@@ -999,9 +1080,9 @@ class LocationPrivacyTests(unittest.TestCase):
                 }
             )
 
-        self.assertEqual([item[0] for item in seen], ["place", "route"])
-        self.assertEqual(seen[0][1]["radius_m"], 3000)
-        self.assertEqual(seen[0][1]["sort"], "distance")
+        self.assertEqual([item[0] for item in seen], ["context", "place", "route"])
+        self.assertEqual(seen[1][1]["radius_m"], 3000)
+        self.assertEqual(seen[1][1]["sort"], "distance")
         for _name, kwargs in seen:
             actual_latitude = kwargs.get("latitude", kwargs.get("origin_latitude"))
             self.assertEqual(actual_latitude, ORIGIN_LATITUDE)
@@ -1012,6 +1093,8 @@ class LocationPrivacyTests(unittest.TestCase):
             self.assertNotIn("location_token", kwargs)
             self.assertNotIn("origin_location_token", kwargs)
         for output in (
+            context_output,
+            second_context_output,
             place_output,
             second_place_output,
             reverse_output,
@@ -1019,6 +1102,13 @@ class LocationPrivacyTests(unittest.TestCase):
         ):
             self.assertNotIn(str(ORIGIN_LATITUDE), output)
             self.assertNotIn(str(ORIGIN_LONGITUDE), output)
+        self.assertIn("search_context_use_consumed_other_uses_retained", context_output)
+        second_context_result = json.loads(second_context_output)
+        self.assertFalse(second_context_result["success"])
+        self.assertEqual(
+            second_context_result["error"]["code"],
+            "LOCATION_TOKEN_SEARCH_CONTEXT_USED",
+        )
         self.assertIn("place_search_use_consumed_route_use_retained", place_output)
         second_place_result = json.loads(second_place_output)
         self.assertFalse(second_place_result["success"])
@@ -1036,6 +1126,70 @@ class LocationPrivacyTests(unittest.TestCase):
         self.assertIn("consumed_after_successful_route", route_output)
         with self.assertRaises(LocationTokenError):
             store.peek(token)
+
+    def test_search_context_requires_token_and_releases_it_after_failure(self) -> None:
+        store = self._store()
+        token = store.issue(ORIGIN_LATITUDE, ORIGIN_LONGITUDE)
+        calls: List[Dict[str, Any]] = []
+
+        class FakeClient:
+            def location_search_context(self, **kwargs: Any) -> Dict[str, Any]:
+                calls.append(kwargs)
+                if len(calls) == 1:
+                    raise KoreaApiError(
+                        "PROVIDER_UNAVAILABLE",
+                        "Kakao could not be reached.",
+                        provider="kakao_geocoding",
+                    )
+                return {
+                    "success": True,
+                    "meta": {
+                        "provider": "kakao_geocoding",
+                        "provider_used": "kakao_geocoding",
+                    },
+                    "data": {
+                        "locality": "서울특별시 중구 소공동",
+                        "localized_query": "pharmacy 서울특별시 중구 소공동",
+                    },
+                }
+
+        with patch.object(korea, "LOCATION_TOKENS", store), patch.object(
+            korea,
+            "KoreaApiClient",
+            return_value=FakeClient(),
+        ):
+            raw_coordinates = json.loads(
+                korea._location_search_context(
+                    {
+                        "query": "pharmacy",
+                        "latitude": ORIGIN_LATITUDE,
+                        "longitude": ORIGIN_LONGITUDE,
+                    }
+                )
+            )
+            failed = json.loads(
+                korea._location_search_context(
+                    {"query": "pharmacy", "location_token": token}
+                )
+            )
+            self.assertEqual(
+                store.peek(token),
+                (ORIGIN_LATITUDE, ORIGIN_LONGITUDE),
+            )
+            succeeded = json.loads(
+                korea._location_search_context(
+                    {"query": "pharmacy", "location_token": token}
+                )
+            )
+
+        self.assertEqual(raw_coordinates["error"]["code"], "INVALID_ARGUMENT")
+        self.assertEqual(failed["error"]["code"], "PROVIDER_UNAVAILABLE")
+        self.assertTrue(succeeded["success"])
+        self.assertEqual(len(calls), 2)
+        for output in (raw_coordinates, failed, succeeded):
+            rendered = json.dumps(output, ensure_ascii=False)
+            self.assertNotIn(str(ORIGIN_LATITUDE), rendered)
+            self.assertNotIn(str(ORIGIN_LONGITUDE), rendered)
 
     def test_malformed_place_response_releases_token_for_retry(self) -> None:
         store = self._store()
@@ -1180,10 +1334,14 @@ class LocationPrivacyTests(unittest.TestCase):
             store.peek(token)
 
     def test_location_schemas_enforce_privacy_specific_coordinate_contracts(self) -> None:
+        context_parameters = LOCATION_SEARCH_CONTEXT["parameters"]
         place_parameters = KOREA_PLACE_SEARCH["parameters"]
         reverse_parameters = KOREA_REVERSE_GEOCODE["parameters"]
         route_parameters = KOREA_ROUTE["parameters"]
 
+        self.assertEqual(context_parameters["required"], ["location_token"])
+        self.assertNotIn("latitude", context_parameters["properties"])
+        self.assertNotIn("longitude", context_parameters["properties"])
         self.assertIn("allOf", place_parameters)
         self.assertIn("oneOf", route_parameters)
         self.assertEqual(reverse_parameters["required"], ["latitude", "longitude"])
@@ -1222,7 +1380,11 @@ class LocationPrivacyTests(unittest.TestCase):
             korea.register(context)
 
         self.assertEqual(context.hooks[0][0], "pre_gateway_dispatch")
-        self.assertEqual(len(context.tools), 6)
+        self.assertEqual(len(context.tools), 7)
+        self.assertIn(
+            "location_search_context",
+            {item["name"] for item in context.tools},
+        )
         self.assertIn("korea_route", {item["name"] for item in context.tools})
 
         with patch.object(

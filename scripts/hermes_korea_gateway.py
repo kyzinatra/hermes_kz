@@ -38,6 +38,7 @@ _BROWSER_EGRESS_MARKER = "__hermes_gateway_mandatory_egress_v1__"
 _gateway_egress_proxy: Any = None
 EXPECTED_KOREA_TOOLS = frozenset(
     {
+        "location_search_context",
         "korea_place_search",
         "korea_geocode",
         "korea_reverse_geocode",
@@ -176,7 +177,7 @@ def verify_required_toolset(
     importer: Callable[[str], Any] = importlib.import_module,
     hermes_root: Path = DEFAULT_HERMES_ROOT,
 ) -> None:
-    """Force discovery and require the exact six-tool Korea contract."""
+    """Force discovery and require the exact reviewed Korea tool contract."""
     plugins_module = importer("hermes_cli.plugins")
     toolsets_module = importer("toolsets")
     _assert_module_origin(plugins_module, hermes_root, "Hermes plugin loader")

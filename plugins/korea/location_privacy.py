@@ -63,6 +63,7 @@ class _LocationEntry:
     expires_at: float
     timer: Optional[threading.Timer] = None
     place_search_used: bool = False
+    search_context_used: bool = False
     reservation_id: Optional[str] = None
     reservation_purpose: Optional[str] = None
 
@@ -153,8 +154,8 @@ class LocationTokenStore:
         *,
         purpose: str,
     ) -> Tuple[LocationReservation, float, float]:
-        """Exclusively lease coordinates for one place search or route call."""
-        if purpose not in {"place_search", "route"}:
+        """Exclusively lease coordinates for one approved location operation."""
+        if purpose not in {"place_search", "search_context", "route"}:
             raise ValueError("unsupported location reservation purpose")
         safe_token = token.strip() if isinstance(token, str) else ""
         if not _TOKEN_PATTERN.fullmatch(safe_token):
@@ -180,7 +181,15 @@ class LocationTokenStore:
                 raise LocationTokenError(
                     "LOCATION_TOKEN_PLACE_SEARCH_USED",
                     "This location token has already been used for a place search. "
-                    "It remains available for one route.",
+                    "It remains available for any unused coarse search context "
+                    "and for one route.",
+                )
+            if purpose == "search_context" and entry.search_context_used:
+                raise LocationTokenError(
+                    "LOCATION_TOKEN_SEARCH_CONTEXT_USED",
+                    "This location token has already produced a general web-search "
+                    "context. Reuse that coarse locality or send a new static "
+                    "Telegram pin.",
                 )
             reservation_id = secrets.token_urlsafe(24)
             entry.reservation_id = reservation_id
@@ -211,7 +220,10 @@ class LocationTokenStore:
                 self._entries.pop(reservation.token, None)
                 self._zero_entry_locked(entry)
                 return True
-            entry.place_search_used = True
+            if reservation.purpose == "place_search":
+                entry.place_search_used = True
+            elif reservation.purpose == "search_context":
+                entry.search_context_used = True
             entry.reservation_id = None
             entry.reservation_purpose = None
             return True
@@ -515,8 +527,10 @@ def sanitize_telegram_location(
         token = store.issue(latitude, longitude)
         replacement = (
             "[Static Telegram location accepted as an ephemeral token. "
-            f"location_token: {token}. Use it with korea_place_search and then "
-            "as origin_location_token with korea_route. The route consumes it; "
+            f"location_token: {token}. Use it with location_search_context for "
+            "Google or general web search, with korea_place_search for nearby "
+            "places, or as origin_location_token with korea_route. The route "
+            "consumes it; "
             f"otherwise it expires in {store.ttl_seconds} seconds. Never copy "
             "the original coordinates into memory or the response.]"
         )

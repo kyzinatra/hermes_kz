@@ -928,6 +928,101 @@ class KoreaApiClient:
             meta={"endpoint": "/v2/local/geo/coord2address.json"},
         )
 
+    def location_search_context(
+        self,
+        latitude: Any,
+        longitude: Any,
+        query: Any = "",
+    ) -> Dict[str, Any]:
+        """Return a coarse locality suitable for provider-neutral web search.
+
+        Unlike ``reverse_geocode``, this deliberately discards the road, parcel,
+        building, postal code, and coordinate fields returned by Kakao.  The
+        caller can therefore localize a Google/DDGS/Tavily query without putting
+        the user's exact Telegram pin into model-visible history.
+        """
+        lat, lon = _coordinate_pair(latitude, longitude)
+        query_text = ""
+        if query not in (None, ""):
+            query_text = _text(query, field="query", maximum=300)
+        payload = self._kakao_get(
+            "/v2/local/geo/coord2address.json",
+            params={
+                "x": _format_coordinate(lon),
+                "y": _format_coordinate(lat),
+                "input_coord": "WGS84",
+            },
+            provider="kakao_geocoding",
+        )
+        documents = _required_document_list(
+            payload.get("documents"),
+            provider="kakao_geocoding",
+        )
+        if not documents:
+            raise KoreaApiError(
+                "LOCATION_CONTEXT_NOT_FOUND",
+                "No administrative locality was found for this location.",
+                provider="kakao_geocoding",
+            )
+
+        document = documents[0]
+        parcel = document.get("address")
+        road = document.get("road_address")
+        source = parcel if isinstance(parcel, dict) and parcel else road
+        if not isinstance(source, dict):
+            raise KoreaApiError(
+                "INVALID_RESPONSE",
+                "Kakao geocoding returned no usable administrative locality.",
+                provider="kakao_geocoding",
+            )
+
+        region_1 = str(source.get("region_1depth_name", "")).strip()
+        region_2 = str(source.get("region_2depth_name", "")).strip()
+        region_3 = str(
+            source.get("region_3depth_h_name")
+            or source.get("region_3depth_name")
+            or ""
+        ).strip()
+        locality_parts = list(
+            dict.fromkeys(
+                part for part in (region_1, region_2, region_3) if part
+            )
+        )
+        if not locality_parts:
+            raise KoreaApiError(
+                "INVALID_RESPONSE",
+                "Kakao geocoding returned an empty administrative locality.",
+                provider="kakao_geocoding",
+            )
+        locality = " ".join(locality_parts)
+        localized_query = " ".join(part for part in (query_text, locality) if part)
+        return _success(
+            "kakao_geocoding",
+            {
+                "locality": locality,
+                "region_1depth_name": region_1 or None,
+                "region_2depth_name": region_2 or None,
+                "region_3depth_name": region_3 or None,
+                "precision": "administrative_neighborhood",
+                "localized_query": localized_query,
+                "instruction": (
+                    "Use localized_query with web_search or a Google/browser "
+                    "search. Treat it as an area hint, not an exact-distance or "
+                    "nearest-place result."
+                ),
+            },
+            limitations=[
+                "The context intentionally omits coordinates, street, building, "
+                "postal code, and exact address.",
+                "Administrative-locality bias is approximate; use Korea place and "
+                "route tools when exact proximity matters.",
+            ],
+            meta={
+                "endpoint": "/v2/local/geo/coord2address.json",
+                "location_precision": "administrative_neighborhood",
+            },
+        )
+
     def route(
         self,
         *,

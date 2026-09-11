@@ -1,11 +1,12 @@
 name: korea
-version: 1.0.0
-description: "Korea place, address, route, browser-handoff, and Kakao link tools backed by official Kakao APIs."
+version: 1.1.0
+description: "Private Telegram location context, Korea place/address/route tools, browser handoffs, and Kakao links."
 author: Hermes Personal
 kind: standalone
 provides_hooks:
   - pre_gateway_dispatch
 provides_tools:
+  - location_search_context
   - korea_place_search
   - korea_geocode
   - korea_reverse_geocode
