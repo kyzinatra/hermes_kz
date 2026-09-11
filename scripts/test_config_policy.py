@@ -116,6 +116,7 @@ class ConfigPolicyTests(unittest.TestCase):
     def test_browser_private_network_and_eval_policy_is_explicit(self) -> None:
         config_text = (ROOT / "config.yaml").read_text("utf-8")
         self.assertIn("  backend: off", config_text)
+        self.assertIn("  cloud_provider: local", config_text)
         self.assertIn("  allow_private_urls: false", config_text)
         self.assertIn("  auto_local_for_private_urls: false", config_text)
         self.assertIn("  restrict_evaluate: true", config_text)

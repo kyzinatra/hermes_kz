@@ -22,7 +22,11 @@ web:
   keyless_fallback: false
   keyless_rescue: false
 browser:
-  backend: false
+  # The Korea gateway permits only the reviewed built-in local Chrome stack.
+  # Pin both selectors so saved/API credentials cannot auto-select a cloud
+  # Browser Use or Browserbase provider for one instance.
+  backend: off
+  cloud_provider: local
   inactivity_timeout: 120
   allow_private_urls: false
   engine: chrome
